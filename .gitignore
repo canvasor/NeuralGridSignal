@@ -51,6 +51,11 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# NeuralGridSignal runtime output
+output/
+logs/
+run/
+
 # Translations
 *.mo
 *.pot
