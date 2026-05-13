@@ -3,7 +3,7 @@ import io
 from urllib.error import HTTPError
 
 from neural_grid_signal.models import BacktestResult, GridScoreResult
-from neural_grid_signal.notifier import TelegramNotifier, format_telegram_message
+from neural_grid_signal.notifier import TelegramNotifier, format_scheduler_event_message, format_telegram_message
 from neural_grid_signal.strategy import build_strategy_document
 
 
@@ -29,10 +29,26 @@ def test_format_telegram_message_contains_mobile_action_fields():
 
     assert "SOLUSDT" in message
     assert "83.4" in message
-    assert "grid_count" in message
-    assert "atr_multiplier" in message
-    assert "action:" in message
+    assert "Grid Setup" in message
+    assert "ATR Multiplier" in message
+    assert "Action" in message
     assert "output/strategies/demo.json" in message
+
+
+def test_format_scheduler_event_message_contains_schedule_context():
+    message = format_scheduler_event_message(
+        event="started",
+        schedule_times=("08:00", "20:00"),
+        timezone_name="Asia/Shanghai",
+        next_run_at="2026-05-14 08:00 CST",
+        pid=1234,
+    )
+
+    assert "STARTED" in message
+    assert "08:00 / 20:00" in message
+    assert "Asia/Shanghai" in message
+    assert "2026-05-14 08:00 CST" in message
+    assert "1234" in message
 
 
 def test_telegram_notifier_skips_when_missing_credentials():
@@ -43,6 +59,16 @@ def test_telegram_notifier_skips_when_missing_credentials():
 
     assert result.sent is False
     assert result.reason == "missing_credentials"
+
+
+def test_telegram_notifier_send_text_returns_dry_run_message():
+    notifier = TelegramNotifier(bot_token="token", channel_id="channel", dry_run=True)
+
+    result = asyncio.run(notifier.send_text("service started"))
+
+    assert result.sent is False
+    assert result.reason == "dry_run"
+    assert result.response == {"text": "service started"}
 
 
 def test_telegram_notifier_includes_telegram_error_body(monkeypatch):

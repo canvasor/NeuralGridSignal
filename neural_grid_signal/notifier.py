@@ -4,8 +4,9 @@ import asyncio
 import json
 import urllib.parse
 import urllib.request
-from urllib.error import HTTPError
 from dataclasses import dataclass
+from datetime import datetime
+from urllib.error import HTTPError
 
 from neural_grid_signal.models import GridScoreResult, NotificationResult, StrategyDocument
 
@@ -24,19 +25,80 @@ def format_telegram_message(strategy: StrategyDocument, score: GridScoreResult, 
     grid = strategy.config["grid_config"]
     risks = ", ".join(score.risk_tags) if score.risk_tags else "none"
     reasons = "；".join(score.reasons[:3]) if score.reasons else "无"
-    return (
-        "AI网格信号\n"
-        f"symbol: {score.symbol}\n"
-        f"score: {score.final_score:.1f}, confidence: {score.confidence:.1f}, direction: {score.direction}\n"
-        f"action: {_action_text(score)}\n"
-        f"grid_count: {grid['grid_count']}, investment: {grid['total_investment']} USDT, leverage: {grid['leverage']}x\n"
-        f"distribution: {grid['distribution']}, direction_bias_ratio: {grid['direction_bias_ratio']}\n"
-        f"atr_multiplier: {grid['atr_multiplier']}, stop_loss_pct: {grid['stop_loss_pct']}, daily_loss_limit_pct: {grid['daily_loss_limit_pct']}\n"
-        f"backtest: score {score.backtest.score:.1f}, hits {score.backtest.grid_hits}, skew {score.backtest.inventory_skew_abs:.2f}\n"
-        f"risk_tags: {risks}\n"
-        f"reason: {reasons}\n"
-        f"strategy_file: {strategy_path}"
+    return "\n".join(
+        [
+            f"🔥 AI Grid Signal | {score.symbol}",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "📊 Score",
+            f"• Final: {score.final_score:.1f}",
+            f"• Confidence: {score.confidence:.1f}",
+            f"• Direction: {score.direction}",
+            "",
+            "🧭 Action",
+            f"• {_action_text(score)}",
+            "",
+            "⚙️ Grid Setup",
+            f"• Grid Count: {grid['grid_count']}",
+            f"• Investment: {grid['total_investment']} USDT",
+            f"• Leverage: {grid['leverage']}x",
+            f"• Distribution: {grid['distribution']}",
+            f"• Bias Ratio: {grid['direction_bias_ratio']}",
+            f"• ATR Multiplier: {grid['atr_multiplier']}",
+            f"• Stop Loss: {grid['stop_loss_pct']}%",
+            f"• Daily Loss Limit: {grid['daily_loss_limit_pct']}%",
+            "",
+            "🧪 Backtest",
+            f"• Score: {score.backtest.score:.1f}",
+            f"• Grid Hits: {score.backtest.grid_hits}",
+            f"• Inventory Skew: {score.backtest.inventory_skew_abs:.2f}",
+            "",
+            "🛡 Risk",
+            f"• Tags: {risks}",
+            f"• Reason: {reasons}",
+            "",
+            "📁 Strategy",
+            f"• {strategy_path}",
+        ]
     )
+
+
+def _format_time(value: datetime | str | None) -> str:
+    if value is None:
+        return "none"
+    if isinstance(value, datetime):
+        zone = value.tzname() or ""
+        return f"{value:%Y-%m-%d %H:%M:%S} {zone}".strip()
+    return value
+
+
+def format_scheduler_event_message(
+    *,
+    event: str,
+    schedule_times: tuple[str, ...],
+    timezone_name: str,
+    next_run_at: datetime | str | None = None,
+    pid: int | None = None,
+    reason: str = "",
+) -> str:
+    event_key = event.upper()
+    icon = {
+        "STARTED": "🚦",
+        "STOPPED": "🛑",
+        "ERROR": "🚨",
+    }.get(event_key, "ℹ️")
+    lines = [
+        f"{icon} NeuralGridSignal | {event_key}",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"• Timezone: {timezone_name}",
+        f"• Schedule: {' / '.join(schedule_times)}",
+    ]
+    if next_run_at is not None:
+        lines.append(f"• Next Run: {_format_time(next_run_at)}")
+    if pid is not None:
+        lines.append(f"• PID: {pid}")
+    if reason:
+        lines.append(f"• Reason: {reason}")
+    return "\n".join(lines)
 
 
 @dataclass
@@ -52,9 +114,32 @@ class TelegramNotifier:
         score: GridScoreResult,
         strategy_path: str,
     ) -> NotificationResult:
+        message = format_telegram_message(strategy, score, strategy_path)
+        return await self.send_text(message)
+
+    async def send_scheduler_event(
+        self,
+        *,
+        event: str,
+        schedule_times: tuple[str, ...],
+        timezone_name: str,
+        next_run_at: datetime | str | None = None,
+        pid: int | None = None,
+        reason: str = "",
+    ) -> NotificationResult:
+        message = format_scheduler_event_message(
+            event=event,
+            schedule_times=schedule_times,
+            timezone_name=timezone_name,
+            next_run_at=next_run_at,
+            pid=pid,
+            reason=reason,
+        )
+        return await self.send_text(message)
+
+    async def send_text(self, message: str) -> NotificationResult:
         if not self.bot_token or not self.channel_id:
             return NotificationResult(sent=False, reason="missing_credentials")
-        message = format_telegram_message(strategy, score, strategy_path)
         if self.dry_run:
             return NotificationResult(sent=False, reason="dry_run", response={"text": message})
         return await asyncio.to_thread(self._send_message, message)

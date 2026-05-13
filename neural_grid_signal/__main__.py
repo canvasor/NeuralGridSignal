@@ -3,12 +3,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
+import signal
+from datetime import datetime
 from pathlib import Path
 
 from neural_grid_signal.config import load_settings
-from neural_grid_signal.models import RunResult
+from neural_grid_signal.models import NotificationResult, RunResult
 from neural_grid_signal.runner import GridSignalRunner
-from neural_grid_signal.scheduler import run_forever
+from neural_grid_signal.scheduler import next_run_after, run_forever
+
+logger = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,10 +47,101 @@ async def _run(args: argparse.Namespace) -> None:
         settings.dry_run = True
     runner = GridSignalRunner(settings=settings)
     if args.schedule and not args.once:
-        await run_forever(lambda: runner.run_once(limit=args.limit), settings.schedule_times, settings.timezone)
+        await _run_scheduled(args, settings, runner)
         return
     result = await runner.run_once(limit=args.limit)
     print(format_run_result(result))
+
+
+def _install_shutdown_handlers(stop_event: asyncio.Event, shutdown_reason: dict[str, str]) -> None:
+    loop = asyncio.get_running_loop()
+
+    def request_shutdown(signame: str) -> None:
+        if stop_event.is_set():
+            return
+        shutdown_reason["value"] = signame
+        logger.info("scheduler shutdown requested signal=%s", signame)
+        stop_event.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, request_shutdown, sig.name)
+        except (NotImplementedError, RuntimeError):
+            signal.signal(sig, lambda _signum, _frame, name=sig.name: request_shutdown(name))
+
+
+async def _send_scheduler_event(
+    notifier: object,
+    *,
+    event: str,
+    schedule_times: tuple[str, ...],
+    timezone_name: str,
+    next_run_at: datetime | None = None,
+    reason: str = "",
+) -> NotificationResult | None:
+    send_scheduler_event = getattr(notifier, "send_scheduler_event", None)
+    if not callable(send_scheduler_event):
+        return None
+    result = await send_scheduler_event(
+        event=event,
+        schedule_times=schedule_times,
+        timezone_name=timezone_name,
+        next_run_at=next_run_at,
+        pid=os.getpid(),
+        reason=reason,
+    )
+    if isinstance(result, NotificationResult):
+        logger.info("scheduler %s notification sent=%s reason=%s", event, result.sent, result.reason)
+        return result
+    return None
+
+
+async def _run_scheduled(args: argparse.Namespace, settings, runner: GridSignalRunner) -> None:
+    stop_event = asyncio.Event()
+    shutdown_reason = {"value": "normal"}
+    _install_shutdown_handlers(stop_event, shutdown_reason)
+
+    next_run_at = next_run_after(datetime.now(settings.timezone), settings.schedule_times, settings.timezone)
+    logger.info(
+        "scheduler started pid=%s schedule_times=%s timezone=%s next_run_at=%s",
+        os.getpid(),
+        ",".join(settings.schedule_times),
+        settings.timezone_name,
+        next_run_at.isoformat(),
+    )
+    await _send_scheduler_event(
+        runner.notifier,
+        event="started",
+        schedule_times=settings.schedule_times,
+        timezone_name=settings.timezone_name,
+        next_run_at=next_run_at,
+    )
+    try:
+        await run_forever(
+            lambda: runner.run_once(limit=args.limit),
+            settings.schedule_times,
+            settings.timezone,
+            stop_event=stop_event,
+        )
+    except Exception:
+        logger.exception("scheduler crashed")
+        await _send_scheduler_event(
+            runner.notifier,
+            event="error",
+            schedule_times=settings.schedule_times,
+            timezone_name=settings.timezone_name,
+            reason="unexpected exception",
+        )
+        raise
+    finally:
+        logger.info("scheduler stopped pid=%s reason=%s", os.getpid(), shutdown_reason["value"])
+        await _send_scheduler_event(
+            runner.notifier,
+            event="stopped",
+            schedule_times=settings.schedule_times,
+            timezone_name=settings.timezone_name,
+            reason=shutdown_reason["value"],
+        )
 
 
 def main() -> None:

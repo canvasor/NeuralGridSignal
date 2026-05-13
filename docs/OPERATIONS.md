@@ -62,6 +62,8 @@ cd /home/admin/NeuralGridSignal
 tail -f logs/grid_signal.log
 ```
 
+启动后日志会立即写入调度器状态，包括 PID、配置时区、定时点和下一次运行时间。停止脚本发送 SIGTERM 后，进程会写入停止原因，并发送停止通知。
+
 ## cron 方案
 
 如果不希望常驻进程，推荐用 cron：
@@ -83,7 +85,16 @@ tail -f logs/grid_signal.log
 
 ## Telegram 内容
 
-通知会包含：
+启动和停止通知会包含：
+
+- 服务状态：STARTED / STOPPED / ERROR
+- timezone
+- schedule
+- next run
+- pid
+- stop reason
+
+策略信号通知使用移动端分区格式，包含：
 
 - symbol
 - score / confidence / direction

@@ -17,6 +17,7 @@ def test_start_scheduler_uses_nohup_schedule_and_pidfile():
     content = Path("scripts/start_scheduler.sh").read_text(encoding="utf-8")
 
     assert "nohup" in content
+    assert "setsid" in content
     assert "python3 -m neural_grid_signal --schedule" in content
     assert "run/grid_signal.pid" in content
     assert "logs/grid_signal.log" in content

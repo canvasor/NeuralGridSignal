@@ -26,7 +26,11 @@ if [[ -f ".env" ]]; then
   set +a
 fi
 
-nohup python3 -m neural_grid_signal --schedule --log-file "${LOG_FILE}" >> "${OUT_FILE}" 2>&1 &
+if command -v setsid >/dev/null 2>&1; then
+  nohup setsid python3 -m neural_grid_signal --schedule --log-file "${LOG_FILE}" >> "${OUT_FILE}" 2>&1 &
+else
+  nohup python3 -m neural_grid_signal --schedule --log-file "${LOG_FILE}" >> "${OUT_FILE}" 2>&1 &
+fi
 pid="$!"
 echo "${pid}" > "${PID_FILE}"
 

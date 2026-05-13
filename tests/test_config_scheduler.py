@@ -1,8 +1,9 @@
 from datetime import datetime
+import asyncio
 from zoneinfo import ZoneInfo
 
 from neural_grid_signal.config import load_settings, parse_schedule_times
-from neural_grid_signal.scheduler import next_run_after
+from neural_grid_signal.scheduler import next_run_after, run_forever
 
 
 def test_load_settings_uses_expected_environment_names():
@@ -38,6 +39,30 @@ def test_next_run_after_uses_beijing_timezone():
     result = next_run_after(now, ("08:00", "20:00"), tz)
 
     assert result == datetime(2026, 5, 14, 8, 0, tzinfo=tz)
+
+
+def test_run_forever_exits_when_stop_event_is_set_before_next_run():
+    async def scenario():
+        tz = ZoneInfo("Asia/Shanghai")
+        stop_event = asyncio.Event()
+        stop_event.set()
+        called = False
+
+        async def job():
+            nonlocal called
+            called = True
+
+        await run_forever(
+            job,
+            ("08:00", "20:00"),
+            tz,
+            now_fn=lambda: datetime(2026, 5, 14, 1, 0, tzinfo=tz),
+            stop_event=stop_event,
+        )
+
+        assert called is False
+
+    asyncio.run(scenario())
 
 
 def test_load_settings_reads_project_dotenv_when_environment_missing(tmp_path, monkeypatch):
