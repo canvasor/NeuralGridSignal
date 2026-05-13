@@ -6,6 +6,7 @@ import logging
 import os
 import signal
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from neural_grid_signal.config import load_settings
@@ -14,6 +15,9 @@ from neural_grid_signal.runner import GridSignalRunner
 from neural_grid_signal.scheduler import next_run_after, run_forever
 
 logger = logging.getLogger(__name__)
+
+LOG_MAX_BYTES = 5_000_000
+LOG_BACKUP_COUNT = 5
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,6 +43,22 @@ def format_run_result(result: RunResult) -> str:
         f"selected={result.selected.symbol} score={result.selected.final_score} "
         f"strategy={result.strategy_path} report={result.report_path} {notification_text}"
     )
+
+
+def build_log_handlers(log_file: str | Path | None) -> list[logging.Handler]:
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    if log_file:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(
+            RotatingFileHandler(
+                log_path,
+                maxBytes=LOG_MAX_BYTES,
+                backupCount=LOG_BACKUP_COUNT,
+                encoding="utf-8",
+            )
+        )
+    return handlers
 
 
 async def _run(args: argparse.Namespace) -> None:
@@ -147,15 +167,10 @@ async def _run_scheduled(args: argparse.Namespace, settings, runner: GridSignalR
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-    handlers: list[logging.Handler] = [logging.StreamHandler()]
-    if args.log_file:
-        log_path = Path(args.log_file)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        handlers.append(logging.FileHandler(log_path, encoding="utf-8"))
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        handlers=handlers,
+        handlers=build_log_handlers(args.log_file),
     )
     asyncio.run(_run(args))
 

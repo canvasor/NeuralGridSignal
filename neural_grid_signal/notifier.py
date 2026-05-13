@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from urllib.error import HTTPError
 
+from neural_grid_signal.http_client import urlopen_with_retries
 from neural_grid_signal.models import GridScoreResult, NotificationResult, StrategyDocument
 
 
@@ -107,6 +108,8 @@ class TelegramNotifier:
     channel_id: str
     dry_run: bool = False
     timeout_seconds: int = 12
+    retry_attempts: int = 3
+    retry_base_delay_seconds: float = 0.5
 
     async def send_strategy_signal(
         self,
@@ -155,7 +158,12 @@ class TelegramNotifier:
         ).encode()
         request = urllib.request.Request(url, data=payload, method="POST")
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            with urlopen_with_retries(
+                request,
+                timeout=self.timeout_seconds,
+                attempts=self.retry_attempts,
+                base_delay_seconds=self.retry_base_delay_seconds,
+            ) as response:
                 body = response.read().decode("utf-8")
             data = json.loads(body) if body else {}
             return NotificationResult(sent=bool(data.get("ok", True)), reason="sent", response=data)

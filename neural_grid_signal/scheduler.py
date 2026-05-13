@@ -24,6 +24,23 @@ def next_run_after(now: datetime, schedule_times: tuple[str, ...], tz: ZoneInfo)
     return tomorrow.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
+async def run_job_once(
+    job: Callable[[], Awaitable[object]],
+    *,
+    lock: asyncio.Lock | None = None,
+    run_at: datetime | None = None,
+) -> bool:
+    if lock is None:
+        await job()
+        return True
+    if lock.locked():
+        logger.warning("scheduler skipped overlapping job run_at=%s", run_at.isoformat() if run_at else "unknown")
+        return False
+    async with lock:
+        await job()
+    return True
+
+
 async def run_forever(
     job: Callable[[], Awaitable[object]],
     schedule_times: tuple[str, ...],
@@ -33,6 +50,7 @@ async def run_forever(
     stop_event: asyncio.Event | None = None,
 ) -> None:
     now_fn = now_fn or (lambda: datetime.now(tz))
+    job_lock = asyncio.Lock()
     while True:
         run_at = next_run_after(now_fn(), schedule_times, tz)
         sleep_seconds = max(0.0, (run_at - now_fn().astimezone(tz)).total_seconds())
@@ -47,5 +65,6 @@ async def run_forever(
         else:
             await asyncio.sleep(sleep_seconds)
         logger.info("scheduler job started run_at=%s", run_at.isoformat())
-        await job()
-        logger.info("scheduler job finished run_at=%s", run_at.isoformat())
+        ran = await run_job_once(job, lock=job_lock, run_at=run_at)
+        if ran:
+            logger.info("scheduler job finished run_at=%s", run_at.isoformat())

@@ -1,5 +1,6 @@
 import asyncio
 import io
+from urllib.error import URLError
 from urllib.error import HTTPError
 
 from neural_grid_signal.models import BacktestResult, GridScoreResult
@@ -90,3 +91,37 @@ def test_telegram_notifier_includes_telegram_error_body(monkeypatch):
 
     assert result.sent is False
     assert "chat not found" in result.reason
+
+
+def test_telegram_notifier_retries_transient_send_error(monkeypatch):
+    notifier = TelegramNotifier(bot_token="token", channel_id="channel")
+    calls = 0
+
+    def fake_urlopen(_request, timeout):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise URLError("temporary failure")
+        return FakeTelegramResponse({"ok": True})
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    result = notifier._send_message("demo")
+
+    assert result.sent is True
+    assert calls == 2
+
+
+class FakeTelegramResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self):
+        return __import__("json").dumps(self.payload).encode("utf-8")

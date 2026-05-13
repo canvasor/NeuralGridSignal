@@ -3,7 +3,7 @@ import asyncio
 from zoneinfo import ZoneInfo
 
 from neural_grid_signal.config import load_settings, parse_schedule_times
-from neural_grid_signal.scheduler import next_run_after, run_forever
+from neural_grid_signal.scheduler import next_run_after, run_forever, run_job_once
 
 
 def test_load_settings_uses_expected_environment_names():
@@ -60,6 +60,27 @@ def test_run_forever_exits_when_stop_event_is_set_before_next_run():
             stop_event=stop_event,
         )
 
+        assert called is False
+
+    asyncio.run(scenario())
+
+
+def test_run_job_once_skips_when_previous_job_is_still_running():
+    async def scenario():
+        lock = asyncio.Lock()
+        await lock.acquire()
+        called = False
+
+        async def job():
+            nonlocal called
+            called = True
+
+        try:
+            ran = await run_job_once(job, lock=lock)
+        finally:
+            lock.release()
+
+        assert ran is False
         assert called is False
 
     asyncio.run(scenario())

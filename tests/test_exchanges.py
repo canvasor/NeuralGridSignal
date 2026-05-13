@@ -1,5 +1,6 @@
 import asyncio
 import json
+from urllib.error import URLError
 
 from neural_grid_signal.exchanges.binance import BinanceFuturesClient
 from neural_grid_signal.exchanges.okx import OKXClient
@@ -90,3 +91,66 @@ def test_binance_client_parses_ticker_and_funding(monkeypatch):
 
     assert tickers["ETHUSDT"].volume_24h == 200000000
     assert funding["ETHUSDT"].funding_rate == 0.0001
+
+
+def test_okx_client_retries_transient_http_error(monkeypatch):
+    calls = 0
+
+    def fake_urlopen(_request, timeout):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise URLError("temporary failure")
+        return FakeHTTPResponse(
+            {
+                "code": "0",
+                "data": [
+                    {
+                        "instId": "SOL-USDT-SWAP",
+                        "last": "150",
+                        "open24h": "145",
+                        "high24h": "155",
+                        "low24h": "140",
+                        "volCcy24h": "100000000",
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    tickers = asyncio.run(OKXClient().get_all_tickers())
+
+    assert tickers["SOLUSDT"].price == 150
+    assert calls == 2
+
+
+def test_binance_client_retries_transient_http_error(monkeypatch):
+    calls = 0
+
+    def fake_urlopen(_request, timeout):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise URLError("temporary failure")
+        return FakeHTTPResponse(
+            [
+                {
+                    "symbol": "ETHUSDT",
+                    "lastPrice": "3000",
+                    "priceChangePercent": "1.5",
+                    "quoteVolume": "200000000",
+                    "highPrice": "3050",
+                    "lowPrice": "2950",
+                }
+            ]
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    tickers = asyncio.run(BinanceFuturesClient().get_all_tickers())
+
+    assert tickers["ETHUSDT"].price == 3000
+    assert calls == 2

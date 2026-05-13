@@ -7,6 +7,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from neural_grid_signal.http_client import urlopen_with_retries
 from neural_grid_signal.models import Candle, FundingSnapshot, OpenInterestSnapshot, TickerSnapshot
 
 
@@ -23,6 +24,8 @@ class BinanceFuturesClient:
     api_secret: str = ""
     base_url: str = "https://fapi.binance.com"
     timeout_seconds: int = 15
+    retry_attempts: int = 3
+    retry_base_delay_seconds: float = 0.5
 
     async def get_symbols(self) -> list[str]:
         payload = await self._get("/fapi/v1/exchangeInfo")
@@ -112,5 +115,10 @@ class BinanceFuturesClient:
         if self.api_key:
             headers["X-MBX-APIKEY"] = self.api_key
         request = urllib.request.Request(url, method="GET", headers=headers)
-        with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+        with urlopen_with_retries(
+            request,
+            timeout=self.timeout_seconds,
+            attempts=self.retry_attempts,
+            base_delay_seconds=self.retry_base_delay_seconds,
+        ) as response:
             return json.loads(response.read().decode("utf-8"))

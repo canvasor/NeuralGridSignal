@@ -1,6 +1,7 @@
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from neural_grid_signal.__main__ import format_run_result
+from neural_grid_signal.__main__ import build_log_handlers, format_run_result
 from neural_grid_signal.models import BacktestResult, GridScoreResult, NotificationResult, RunResult, StrategyDocument
 
 
@@ -29,3 +30,17 @@ def test_format_run_result_prints_notification_status():
 
     assert "notification=skipped reason=missing_credentials" in text
     assert "report=output/reports/demo.md" in text
+
+
+def test_build_log_handlers_uses_rotating_file_handler(tmp_path):
+    handlers = build_log_handlers(tmp_path / "grid_signal.log")
+
+    try:
+        file_handlers = [handler for handler in handlers if isinstance(handler, RotatingFileHandler)]
+
+        assert file_handlers
+        assert file_handlers[0].maxBytes == 5_000_000
+        assert file_handlers[0].backupCount == 5
+    finally:
+        for handler in handlers:
+            handler.close()
