@@ -172,14 +172,15 @@ def build_strategy_document(
     symbol = score.symbol.upper()
     distribution, bias = _distribution_and_bias(score)
     max_drawdown, stop_loss, daily_loss = _risk_params(score)
+    has_explicit_bounds = score.grid_lower_price > 0 and score.grid_upper_price > score.grid_lower_price
     grid_config = {
         "symbol": symbol,
         "grid_count": _grid_count(score),
         "total_investment": round(float(investment), 2),
         "leverage": 2,
-        "upper_price": 0,
-        "lower_price": 0,
-        "use_atr_bounds": True,
+        "upper_price": round(score.grid_upper_price, 8) if has_explicit_bounds else 0,
+        "lower_price": round(score.grid_lower_price, 8) if has_explicit_bounds else 0,
+        "use_atr_bounds": not has_explicit_bounds,
         "atr_multiplier": _atr_multiplier(score),
         "distribution": distribution,
         "max_drawdown_pct": max_drawdown,

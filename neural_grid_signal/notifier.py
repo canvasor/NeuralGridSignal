@@ -40,6 +40,8 @@ def format_telegram_message(
     grid = strategy.config["grid_config"]
     risks = ", ".join(score.risk_tags) if score.risk_tags else "none"
     reasons = "；".join(score.reasons[:3]) if score.reasons else "无"
+    preflight = score.nofx_preflight
+    bounds_mode = "ATR Auto Bounds" if grid.get("use_atr_bounds") else "Explicit Bounds"
     scan_lines = []
     if stats is not None:
         scan_lines = [
@@ -74,7 +76,16 @@ def format_telegram_message(
             f"• ATR Multiplier: {grid['atr_multiplier']}",
             f"• Stop Loss: {grid['stop_loss_pct']}%",
             f"• Daily Loss Limit: {grid['daily_loss_limit_pct']}%",
+            f"• Bounds Mode: {bounds_mode}",
             f"• Range: {score.grid_lower_price:.8g} - {score.grid_upper_price:.8g}",
+            "",
+            "🧩 NOFX Preflight",
+            f"• Verdict: {preflight.verdict.upper()}",
+            f"• 5m BOLL Width: {preflight.bollinger_width_5m:.2f}%",
+            f"• 4h Change: {preflight.price_change_4h:.2f}%",
+            f"• BOLL Position: {preflight.bollinger_position_label}",
+            f"• Grid Spacing: {preflight.grid_spacing:.8g}",
+            f"• Spacing Display OK: {preflight.display_spacing_ok}",
             "",
             "🧪 Backtest",
             f"• Score: {score.backtest.score:.1f}",

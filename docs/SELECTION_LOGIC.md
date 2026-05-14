@@ -69,13 +69,15 @@ abs(last_close - first_close) / sum(abs(close[i] - close[i-1]))
 
 回测不模拟真实交易所成交队列，只做结构判断：
 
-- 使用和 nofx 运行时一致的 ATR 边界公式：当前价 ± `4h ATR14 * atr_multiplier`。
+- 使用 nofx 的 ATR 边界公式估算回测范围：当前价 ± `4h ATR14 * atr_multiplier`。
 - 在多个 `grid_count` 与 `atr_multiplier` 组合中搜索综合分最高的参数。
+- 搜索时会过滤单格间距低于 `0.005` 的组合，避免 nofx Prompt 以两位小数显示成 `$0.00`。
 - 统计 K 线收盘价穿越网格层次数。
 - 穿越越多，说明网格触发潜力越高。
 - 库存偏移越大，说明单边风险越高。
 - 最大回撤越大，评分越低。
 - 收益代理、最大回撤、网格上下沿、最佳网格数和 ATR 倍数会写入报告和通知。
+- 导出的 nofx 策略默认使用显式 `lower_price` / `upper_price`，不依赖 nofx 容器运行时自动 ATR 边界。
 
 该回测是选币维度，不是收益承诺。
 

@@ -27,7 +27,27 @@ def _candles(symbol, closes):
     return rows
 
 
-def _market(symbol, closes, volume=80_000_000, oi=30_000_000, funding=0.00005):
+def _tight_candles(symbol, closes, wick_pct=0.002):
+    rows = []
+    for idx, close in enumerate(closes):
+        previous = closes[idx - 1] if idx else close
+        high = max(previous, close) * (1 + wick_pct)
+        low = min(previous, close) * (1 - wick_pct)
+        rows.append(
+            Candle(
+                open_time=idx,
+                open=previous,
+                high=high,
+                low=low,
+                close=close,
+                volume=1000,
+                quote_volume=100_000,
+            )
+        )
+    return rows
+
+
+def _market(symbol, closes, volume=80_000_000, oi=30_000_000, funding=0.00005, okx_5m_closes=None):
     price = closes[-1]
     return SymbolMarketData(
         symbol=symbol,
@@ -39,6 +59,7 @@ def _market(symbol, closes, volume=80_000_000, oi=30_000_000, funding=0.00005):
             high_24h=max(closes[-5:]),
             low_24h=min(closes[-5:]),
         ),
+        okx_candles_5m=_tight_candles(symbol, okx_5m_closes) if okx_5m_closes else [],
         okx_candles_15m=_candles(symbol, closes),
         okx_candles_1h=_candles(symbol, closes[::2] or closes),
         okx_candles_4h=_candles(symbol, closes[::4] or closes),
@@ -114,3 +135,74 @@ def test_scorer_uses_optimized_backtest_parameters():
     assert result.recommended_atr_multiplier >= 2.0
     assert result.grid_lower_price > 0
     assert result.grid_upper_price > result.grid_lower_price
+
+
+def test_scorer_rejects_nofx_runtime_trend_conditions():
+    scorer = GridScorer(ScoringConfig(min_volume_24h=10_000_000, min_oi_value=10_000_000, investment=500))
+    base_5m = [0.386, 0.389, 0.391, 0.388, 0.392, 0.394, 0.391, 0.395, 0.397, 0.394]
+    trend_5m = base_5m + [
+        0.396,
+        0.399,
+        0.402,
+        0.398,
+        0.404,
+        0.407,
+        0.409,
+        0.406,
+        0.411,
+        0.414,
+        0.416,
+        0.413,
+        0.418,
+        0.421,
+        0.424,
+        0.419,
+        0.425,
+        0.428,
+        0.431,
+        0.427,
+        0.433,
+        0.436,
+        0.439,
+        0.435,
+        0.441,
+        0.444,
+        0.447,
+        0.443,
+        0.449,
+        0.452,
+        0.455,
+        0.451,
+        0.457,
+        0.460,
+        0.463,
+        0.459,
+        0.465,
+        0.468,
+        0.471,
+        0.467,
+        0.473,
+        0.476,
+        0.479,
+        0.475,
+        0.481,
+        0.484,
+        0.487,
+        0.483,
+        0.489,
+        0.492,
+    ]
+    market = _market(
+        "ONDOUSDT",
+        [0.39, 0.405, 0.385, 0.41, 0.39, 0.415, 0.395, 0.42, 0.4, 0.425, 0.405, 0.41],
+        okx_5m_closes=trend_5m,
+    )
+
+    result = scorer.score(market)
+
+    assert result.nofx_preflight.verdict == "reject"
+    assert result.hard_blocked
+    assert "nofx_runtime_reject" in result.risk_tags
+    assert "wide_5m_bollinger" in result.risk_tags
+    assert "strong_4h_move" in result.risk_tags
+    assert result.final_score <= 39

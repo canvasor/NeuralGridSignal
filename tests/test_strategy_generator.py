@@ -65,3 +65,12 @@ def test_build_strategy_document_accepts_investment_override():
     payload = build_strategy_document(_score(), investment=750).to_dict()
 
     assert payload["config"]["grid_config"]["total_investment"] == 750
+
+
+def test_build_strategy_document_exports_explicit_bounds_for_nofx_container():
+    payload = build_strategy_document(_score()).to_dict()
+
+    grid = payload["config"]["grid_config"]
+    assert grid["use_atr_bounds"] is False
+    assert grid["lower_price"] == 95
+    assert grid["upper_price"] == 105

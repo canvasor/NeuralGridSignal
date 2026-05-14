@@ -67,6 +67,9 @@ def test_runner_generates_strategy_file_and_report(tmp_path):
     payload = json.loads(result.strategy_path.read_text(encoding="utf-8"))
     assert payload["config"]["grid_config"]["symbol"] == "SOLUSDT"
     assert payload["config"]["grid_config"]["total_investment"] == 750
+    report = result.report_path.read_text(encoding="utf-8")
+    assert "## NOFX Preflight" in report
+    assert "bounds_mode: explicit" in report
     assert result.candidate_stats.scoring_pool_count == 1
     assert notifier.calls[0][3].total_symbols == 3
 

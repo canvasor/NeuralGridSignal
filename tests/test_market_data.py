@@ -15,6 +15,9 @@ def _candles():
 
 
 class FakeOKX:
+    def __init__(self):
+        self.kline_calls = []
+
     async def get_all_tickers(self):
         return {
             "SOLUSDT": TickerSnapshot("SOLUSDT", 101, 1.0, 80_000_000, 103, 98),
@@ -23,6 +26,7 @@ class FakeOKX:
         }
 
     async def get_klines(self, symbol, interval="15m", limit=192):
+        self.kline_calls.append((symbol, interval, limit))
         return _candles()
 
     async def get_funding_rate(self, symbol):
@@ -57,6 +61,8 @@ def test_market_data_provider_records_candidate_stats():
     rows = asyncio.run(provider.fetch_candidates(limit=10))
 
     assert [row.symbol for row in rows] == ["SOLUSDT", "DOGEUSDT"]
+    assert rows[0].okx_candles_5m
+    assert ("SOLUSDT", "5m", 50) in provider.okx.kline_calls
     assert provider.last_stats.total_symbols == 3
     assert provider.last_stats.liquidity_pass_count == 2
     assert provider.last_stats.scoring_pool_count == 2

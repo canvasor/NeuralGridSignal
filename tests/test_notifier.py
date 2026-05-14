@@ -3,7 +3,7 @@ import io
 from urllib.error import URLError
 from urllib.error import HTTPError
 
-from neural_grid_signal.models import BacktestResult, CandidateStats, GridScoreResult
+from neural_grid_signal.models import BacktestResult, CandidateStats, GridScoreResult, NofxPreflight
 from neural_grid_signal.notifier import TelegramNotifier, format_scheduler_event_message, format_telegram_message
 from neural_grid_signal.strategy import build_strategy_document
 
@@ -20,6 +20,16 @@ def _strategy_and_score():
         reasons=["震荡质量高"],
         breakdown={"range": 25},
         backtest=BacktestResult(score=74, grid_hits=16, realized_profit_proxy=3.0, inventory_skew_abs=0.1),
+        grid_lower_price=95,
+        grid_upper_price=105,
+        nofx_preflight=NofxPreflight(
+            verdict="pass",
+            bollinger_width_5m=2.4,
+            price_change_4h=1.2,
+            bollinger_position_label="middle",
+            grid_spacing=1.25,
+            display_spacing_ok=True,
+        ),
     )
     return build_strategy_document(score), score
 
@@ -39,6 +49,9 @@ def test_format_telegram_message_contains_mobile_action_fields():
     assert "Liquidity Filtered Out" in message
     assert "60" in message
     assert "500 USDT" in message
+    assert "NOFX Preflight" in message
+    assert "PASS" in message
+    assert "Explicit Bounds" in message
     assert "output/strategies/demo.json" in message
 
 

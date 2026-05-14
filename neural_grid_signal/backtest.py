@@ -119,6 +119,7 @@ def optimize_grid(
     *,
     investment: float,
     bound_atr: float | None = None,
+    min_spacing: float = 0.0,
     grid_counts: tuple[int, ...] = (6, 7, 8, 9, 10, 11, 12),
     atr_multipliers: tuple[float, ...] = (2.0, 2.2, 2.4, 2.6, 2.8, 3.0),
 ) -> BacktestResult:
@@ -126,6 +127,10 @@ def optimize_grid(
     for grid_count in grid_counts:
         for multiplier in atr_multipliers:
             result = simulate_grid(candles, grid_count, multiplier, investment, bound_atr=bound_atr)
+            if min_spacing > 0 and result.grid_count > 1:
+                spacing = (result.upper_price - result.lower_price) / (result.grid_count - 1)
+                if spacing < min_spacing:
+                    continue
             if result.score > best.score:
                 best = result
     return best

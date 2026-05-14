@@ -87,6 +87,8 @@ class GridSignalRunner:
     @staticmethod
     def _render_report(strategy, selected, scores, stats: CandidateStats) -> str:
         grid = strategy.config["grid_config"]
+        preflight = selected.nofx_preflight
+        bounds_mode = "atr_auto" if grid.get("use_atr_bounds") else "explicit"
         lines = [
             f"# {selected.symbol} AI 网格信号",
             "",
@@ -109,6 +111,7 @@ class GridSignalRunner:
             f"- grid_count: {grid['grid_count']}",
             f"- atr_multiplier: {grid['atr_multiplier']}",
             f"- total_investment: {grid['total_investment']}",
+            f"- bounds_mode: {bounds_mode}",
             f"- lower_price: {selected.grid_lower_price}",
             f"- upper_price: {selected.grid_upper_price}",
             f"- distribution: {grid['distribution']}",
@@ -116,6 +119,22 @@ class GridSignalRunner:
             f"- risk_tags: {', '.join(selected.risk_tags)}",
             f"- backtest_profit_proxy: {selected.backtest.realized_profit_proxy}",
             f"- backtest_max_drawdown_pct: {selected.backtest.max_drawdown_pct}",
+            "",
+            "## NOFX Preflight",
+            "",
+            f"- verdict: {preflight.verdict}",
+            f"- bollinger_width_5m: {preflight.bollinger_width_5m}",
+            f"- atr_pct_5m: {preflight.atr_pct_5m}",
+            f"- rsi_5m: {preflight.rsi_5m}",
+            f"- price_change_1h: {preflight.price_change_1h}",
+            f"- price_change_4h: {preflight.price_change_4h}",
+            f"- bollinger_position: {preflight.bollinger_position}",
+            f"- bollinger_position_label: {preflight.bollinger_position_label}",
+            f"- grid_range_pct: {preflight.grid_range_pct}",
+            f"- grid_spacing: {preflight.grid_spacing}",
+            f"- grid_spacing_pct: {preflight.grid_spacing_pct}",
+            f"- display_spacing_ok: {preflight.display_spacing_ok}",
+            f"- risk_tags: {', '.join(preflight.risk_tags)}",
             "",
             "## Reasons",
             "",

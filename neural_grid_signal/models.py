@@ -65,6 +65,7 @@ class SymbolMarketData:
     okx_candles_15m: list[Candle]
     okx_candles_1h: list[Candle]
     okx_candles_4h: list[Candle] = field(default_factory=list)
+    okx_candles_5m: list[Candle] = field(default_factory=list)
     okx_funding: FundingSnapshot | None = None
     okx_oi: OpenInterestSnapshot | None = None
     okx_orderbook: OrderBookSnapshot | None = None
@@ -89,6 +90,23 @@ class BacktestResult:
 
 
 @dataclass
+class NofxPreflight:
+    verdict: str = "unknown"
+    bollinger_width_5m: float = 0.0
+    atr_pct_5m: float = 0.0
+    rsi_5m: float = 50.0
+    price_change_1h: float = 0.0
+    price_change_4h: float = 0.0
+    bollinger_position: float = 0.5
+    bollinger_position_label: str = "middle"
+    grid_range_pct: float = 0.0
+    grid_spacing: float = 0.0
+    grid_spacing_pct: float = 0.0
+    display_spacing_ok: bool = True
+    risk_tags: list[str] = field(default_factory=list)
+
+
+@dataclass
 class GridScoreResult:
     symbol: str
     final_score: float
@@ -105,6 +123,7 @@ class GridScoreResult:
     recommended_atr_multiplier: float = 2.4
     grid_lower_price: float = 0.0
     grid_upper_price: float = 0.0
+    nofx_preflight: NofxPreflight = field(default_factory=NofxPreflight)
 
 
 @dataclass

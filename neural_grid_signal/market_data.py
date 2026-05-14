@@ -63,7 +63,8 @@ class CombinedMarketDataProvider:
 
     async def _build_symbol_row(self, ticker, binance_tickers, binance_funding) -> SymbolMarketData | None:
         symbol = ticker.symbol
-        okx_15m, okx_1h, okx_4h, okx_funding, okx_oi, orderbook = await asyncio.gather(
+        okx_5m, okx_15m, okx_1h, okx_4h, okx_funding, okx_oi, orderbook = await asyncio.gather(
+            self.okx.get_klines(symbol, "5m", 50),
             self.okx.get_klines(symbol, "15m", 192),
             self.okx.get_klines(symbol, "1h", 168),
             self.okx.get_klines(symbol, "4h", 20),
@@ -87,6 +88,7 @@ class CombinedMarketDataProvider:
             okx_candles_15m=okx_15m,
             okx_candles_1h=okx_1h,
             okx_candles_4h=okx_4h,
+            okx_candles_5m=okx_5m,
             okx_funding=okx_funding,
             okx_oi=okx_oi,
             okx_orderbook=orderbook,
