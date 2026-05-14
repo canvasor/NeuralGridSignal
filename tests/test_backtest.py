@@ -76,3 +76,18 @@ def test_optimize_grid_returns_best_grid_parameters():
     assert result.grid_count in {6, 8}
     assert result.atr_multiplier in {2.0, 2.6}
     assert result.score > 0
+
+
+def test_grid_backtest_counts_intrabar_crossings_from_high_low_path():
+    candles = [
+        Candle(open_time=0, open=100, high=100.5, low=99.5, close=100, volume=1000, quote_volume=100_000),
+        Candle(open_time=1, open=100, high=103.2, low=96.8, close=100, volume=1000, quote_volume=100_000),
+        Candle(open_time=2, open=100, high=100.4, low=99.6, close=100, volume=1000, quote_volume=100_000),
+        Candle(open_time=3, open=100, high=100.4, low=99.6, close=100, volume=1000, quote_volume=100_000),
+        Candle(open_time=4, open=100, high=100.4, low=99.6, close=100, volume=1000, quote_volume=100_000),
+        Candle(open_time=5, open=100, high=100.4, low=99.6, close=100, volume=1000, quote_volume=100_000),
+    ]
+
+    result = simulate_grid(candles, grid_count=5, atr_multiplier=1.0, investment=200, bound_atr=2.0)
+
+    assert result.grid_hits > 0

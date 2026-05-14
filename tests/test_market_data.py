@@ -43,11 +43,24 @@ class FakeOKX:
 
 
 class FakeBinance:
+    def __init__(self):
+        self.kline_calls = []
+
     async def get_all_tickers(self):
-        return {}
+        return {
+            "SOLUSDT": TickerSnapshot("SOLUSDT", 101, 1.0, 120_000_000, 103, 98),
+            "DOGEUSDT": TickerSnapshot("DOGEUSDT", 0.2, 1.0, 80_000_000, 0.22, 0.18),
+        }
 
     async def get_all_funding_rates(self):
         return {}
+
+    async def get_klines(self, symbol, interval="15m", limit=192):
+        self.kline_calls.append((symbol, interval, limit))
+        return _candles()
+
+    async def get_open_interest(self, symbol, price=0):
+        return OpenInterestSnapshot(symbol, 40_000_000, 0.7)
 
     async def close(self):
         return None
@@ -62,7 +75,9 @@ def test_market_data_provider_records_candidate_stats():
 
     assert [row.symbol for row in rows] == ["SOLUSDT", "DOGEUSDT"]
     assert rows[0].okx_candles_5m
+    assert rows[0].binance_candles_5m
     assert ("SOLUSDT", "5m", 50) in provider.okx.kline_calls
+    assert ("SOLUSDT", "5m", 50) in provider.binance.kline_calls
     assert provider.last_stats.total_symbols == 3
     assert provider.last_stats.liquidity_pass_count == 2
     assert provider.last_stats.scoring_pool_count == 2

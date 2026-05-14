@@ -70,6 +70,7 @@ class SymbolMarketData:
     okx_oi: OpenInterestSnapshot | None = None
     okx_orderbook: OrderBookSnapshot | None = None
     binance_ticker: TickerSnapshot | None = None
+    binance_candles_5m: list[Candle] = field(default_factory=list)
     binance_candles_15m: list[Candle] = field(default_factory=list)
     binance_funding: FundingSnapshot | None = None
     binance_oi: OpenInterestSnapshot | None = None
@@ -91,6 +92,7 @@ class BacktestResult:
 
 @dataclass
 class NofxPreflight:
+    source: str = "unknown"
     verdict: str = "unknown"
     bollinger_width_5m: float = 0.0
     atr_pct_5m: float = 0.0
@@ -167,9 +169,11 @@ class NotificationResult:
 @dataclass
 class RunResult:
     selected: GridScoreResult
-    strategy: StrategyDocument
-    strategy_path: Path
+    strategy: StrategyDocument | None
+    strategy_path: Path | None
     report_path: Path
+    outcome: str = "signal"
+    snapshot_path: Path = field(default_factory=Path)
     notification: NotificationResult | None = None
     all_scores: list[GridScoreResult] = field(default_factory=list)
     candidate_stats: CandidateStats = field(default_factory=CandidateStats)

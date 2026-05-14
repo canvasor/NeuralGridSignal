@@ -215,9 +215,10 @@ class GridScorer:
         return clamp(100 - sum(penalties.get(tag, 0) for tag in set(tags)), 0, 100)
 
     def _nofx_preflight(self, data: SymbolMarketData, backtest: BacktestResult) -> NofxPreflight:
-        candles = data.okx_candles_5m
+        candles = data.binance_candles_5m or data.okx_candles_5m
+        source = "binance_5m" if data.binance_candles_5m else "okx_5m" if data.okx_candles_5m else "missing"
         if not candles:
-            return NofxPreflight(verdict="unknown", risk_tags=["nofx_preflight_missing_5m"])
+            return NofxPreflight(source=source, verdict="unknown", risk_tags=["nofx_preflight_missing_5m"])
 
         current_price = candles[-1].close
         lower_band, middle_band, upper_band = self._bollinger_bands(candles)
@@ -274,6 +275,7 @@ class GridScorer:
             verdict = "pass"
 
         return NofxPreflight(
+            source=source,
             verdict=verdict,
             bollinger_width_5m=round(boll_width, 4),
             atr_pct_5m=round(atr_pct_5m, 4),

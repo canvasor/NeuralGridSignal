@@ -104,6 +104,51 @@ def format_telegram_message(
     )
 
 
+def format_no_signal_message(
+    score: GridScoreResult,
+    report_path: str,
+    snapshot_path: str,
+    *,
+    stats: CandidateStats | None = None,
+) -> str:
+    preflight = score.nofx_preflight
+    scan_lines = []
+    if stats is not None:
+        scan_lines = [
+            "",
+            "🔎 Scan Pool",
+            f"• Total OKX Symbols: {stats.total_symbols}",
+            f"• Liquidity Passed: {stats.liquidity_pass_count}",
+            f"• Grid Screening Pool: {stats.scoring_pool_count}",
+            f"• Hard Filter Passed: {stats.hard_filter_pass_count}",
+        ]
+    return "\n".join(
+        [
+            f"⏸ AI Grid Signal | NO SIGNAL",
+            "━━━━━━━━━━━━━━━━━━━━",
+            *scan_lines,
+            "",
+            "📉 Top Candidate Blocked",
+            f"• Symbol: {score.symbol}",
+            f"• Score: {score.final_score:.1f}",
+            f"• Direction: {score.direction}",
+            f"• NOFX Verdict: {preflight.verdict.upper()}",
+            f"• Source: {preflight.source}",
+            f"• 5m BOLL Width: {preflight.bollinger_width_5m:.2f}%",
+            f"• 4h Change: {preflight.price_change_4h:.2f}%",
+            f"• BOLL Position: {preflight.bollinger_position_label}",
+            f"• Display Spacing OK: {preflight.display_spacing_ok}",
+            "",
+            "🛡 Reason",
+            f"• {'；'.join(score.reasons[:3]) if score.reasons else '没有候选通过 NOFX 预检'}",
+            "",
+            "📁 Files",
+            f"• Report: {report_path}",
+            f"• Snapshot: {snapshot_path}",
+        ]
+    )
+
+
 def _format_time(value: datetime | str | None) -> str:
     if value is None:
         return "none"
@@ -160,6 +205,16 @@ class TelegramNotifier:
         stats: CandidateStats | None = None,
     ) -> NotificationResult:
         message = format_telegram_message(strategy, score, strategy_path, stats=stats)
+        return await self.send_text(message)
+
+    async def send_no_signal(
+        self,
+        score: GridScoreResult,
+        report_path: str,
+        snapshot_path: str,
+        stats: CandidateStats | None = None,
+    ) -> NotificationResult:
+        message = format_no_signal_message(score, report_path, snapshot_path, stats=stats)
         return await self.send_text(message)
 
     async def send_scheduler_event(

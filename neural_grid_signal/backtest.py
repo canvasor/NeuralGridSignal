@@ -27,6 +27,26 @@ def _levels(candles: list[Candle], grid_count: int, atr_multiplier: float, bound
     return [low + spacing * idx for idx in range(grid_count)]
 
 
+def _crossed_levels(levels: list[float], start: float, end: float) -> list[float]:
+    if start == end:
+        return []
+    if end > start:
+        return [level for level in levels if start < level <= end]
+    return list(reversed([level for level in levels if end <= level < start]))
+
+
+def _path_points(candle: Candle) -> tuple[float, ...]:
+    if candle.close > candle.open:
+        return (candle.open, candle.low, candle.high, candle.close)
+    if candle.close < candle.open:
+        return (candle.open, candle.high, candle.low, candle.close)
+    upper_wick = candle.high - candle.open
+    lower_wick = candle.open - candle.low
+    if lower_wick > upper_wick:
+        return (candle.open, candle.low, candle.high, candle.close)
+    return (candle.open, candle.high, candle.low, candle.close)
+
+
 def simulate_grid(
     candles: list[Candle],
     grid_count: int,
@@ -54,29 +74,24 @@ def simulate_grid(
     unit_notional = investment / grid_count
     fee_cost = fee_bps / 10_000 * unit_notional
 
-    for prev, current in zip(candles, candles[1:]):
-        start = prev.close
-        end = current.close
-        if start == end:
-            continue
-        low = min(start, end)
-        high = max(start, end)
-        crossed = [level for level in levels if low < level <= high]
-        if not crossed:
-            continue
-        if end < start:
-            crossed = list(reversed(crossed))
-
-        for _level in crossed:
-            grid_hits += 1
-            previous_inventory = inventory
-            if end > start:
-                inventory -= 1
-            else:
-                inventory += 1
-            if previous_inventory and (previous_inventory > 0 > inventory or previous_inventory < 0 < inventory or abs(inventory) < abs(previous_inventory)):
-                realized_profit += max(0.0, spacing / center * unit_notional - fee_cost)
-            max_inventory = max(max_inventory, abs(inventory))
+    for candle in candles[1:]:
+        path = _path_points(candle)
+        for start, end in zip(path, path[1:]):
+            crossed = _crossed_levels(levels, start, end)
+            for _level in crossed:
+                grid_hits += 1
+                previous_inventory = inventory
+                if end > start:
+                    inventory -= 1
+                else:
+                    inventory += 1
+                if previous_inventory and (
+                    previous_inventory > 0 > inventory
+                    or previous_inventory < 0 < inventory
+                    or abs(inventory) < abs(previous_inventory)
+                ):
+                    realized_profit += max(0.0, spacing / center * unit_notional - fee_cost * 2)
+                max_inventory = max(max_inventory, abs(inventory))
 
     hit_score = min(40.0, grid_hits * 3.0)
     profit_score = min(20.0, realized_profit / max(1.0, investment) * 500.0)

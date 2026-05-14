@@ -75,10 +75,12 @@ class CombinedMarketDataProvider:
         if len(okx_15m) < 24:
             return None
         binance_ticker = binance_tickers.get(symbol)
+        binance_5m = []
         binance_15m = []
         binance_oi = None
         if binance_ticker:
-            binance_15m, binance_oi = await asyncio.gather(
+            binance_5m, binance_15m, binance_oi = await asyncio.gather(
+                self.binance.get_klines(symbol, "5m", 50),
                 self.binance.get_klines(symbol, "15m", 192),
                 self.binance.get_open_interest(symbol, binance_ticker.price),
             )
@@ -93,6 +95,7 @@ class CombinedMarketDataProvider:
             okx_oi=okx_oi,
             okx_orderbook=orderbook,
             binance_ticker=binance_ticker,
+            binance_candles_5m=binance_5m,
             binance_candles_15m=binance_15m,
             binance_funding=binance_funding.get(symbol),
             binance_oi=binance_oi,

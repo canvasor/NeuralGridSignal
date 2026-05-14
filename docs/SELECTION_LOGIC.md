@@ -16,9 +16,10 @@
 - 进入网格评分池数量。
 - 通过硬风控数量。
 
-Binance 数据只做辅助：
+Binance 数据只做辅助，但在 nofx 兼容阶段有一项额外职责：
 
 - 同名 Binance Futures 合约存在时，比较 2 天涨跌幅和 ATR 是否与 OKX 接近。
+- 同名 Binance Futures 合约存在时，`NOFX Preflight` 优先使用 Binance 5m K 线。
 - Binance 缺失时不直接淘汰，但辅助确认分为中性。
 - Binance 与 OKX 分歧越大，辅助确认分越低。
 
@@ -67,9 +68,10 @@ abs(last_close - first_close) / sum(abs(close[i] - close[i-1]))
 
 ## 2 天轻量网格回测
 
-回测不模拟真实交易所成交队列，只做结构判断：
+回测不模拟真实交易所成交队列，但已经对 nofx 做了两项关键对齐：
 
 - 使用 nofx 的 ATR 边界公式估算回测范围：当前价 ± `4h ATR14 * atr_multiplier`。
+- 单根 K 线按 intrabar 路径估算网格触发，而不是只看收盘价穿越。
 - 在多个 `grid_count` 与 `atr_multiplier` 组合中搜索综合分最高的参数。
 - 搜索时会过滤单格间距低于 `0.005` 的组合，避免 nofx Prompt 以两位小数显示成 `$0.00`。
 - 统计 K 线收盘价穿越网格层次数。
@@ -78,6 +80,7 @@ abs(last_close - first_close) / sum(abs(close[i] - close[i-1]))
 - 最大回撤越大，评分越低。
 - 收益代理、最大回撤、网格上下沿、最佳网格数和 ATR 倍数会写入报告和通知。
 - 导出的 nofx 策略默认使用显式 `lower_price` / `upper_price`，不依赖 nofx 容器运行时自动 ATR 边界。
+- 如果没有任何候选通过 `NOFX Preflight = pass`，系统输出 `no_signal`，只保留报告和运行快照，不生成策略 JSON。
 
 该回测是选币维度，不是收益承诺。
 

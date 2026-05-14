@@ -40,9 +40,10 @@ def format_run_result(result: RunResult) -> str:
         notification_text = f"notification=sent reason={notification.reason}"
     else:
         notification_text = f"notification=skipped reason={notification.reason}"
+    strategy_path = result.strategy_path if result.strategy_path is not None else "none"
     return (
-        f"selected={result.selected.symbol} score={result.selected.final_score} "
-        f"strategy={result.strategy_path} report={result.report_path} {notification_text}"
+        f"outcome={result.outcome} selected={result.selected.symbol} score={result.selected.final_score} "
+        f"strategy={strategy_path} report={result.report_path} snapshot={result.snapshot_path} {notification_text}"
     )
 
 

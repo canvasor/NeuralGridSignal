@@ -6,7 +6,9 @@ OKX 合约智能网格信号辅助系统。系统扫描 OKX USDT 永续合约，
 
 - OKX 主市场扫描：ticker、K 线、资金费率、OI、盘口。
 - Binance 辅助确认：ticker、K 线、资金费率、OI。
-- 最近 2 天轻量网格回测。
+- 最近 2 天 nofx-compatible 轻量网格回测，按 K 线路径估算网格触发。
+- `NOFX Preflight`：优先使用 Binance 5m 数据预检 nofx 运行时是否会接受该币种。
+- `pass-only` 选币：没有候选通过 nofx 预检时输出 `no_signal`，只写报告和运行快照，不生成策略 JSON。
 - 网格适配评分和硬风控过滤。
 - nofx `grid_trading` 策略 JSON 生成。
 - Telegram 通知。

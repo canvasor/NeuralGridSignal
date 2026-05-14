@@ -206,3 +206,73 @@ def test_scorer_rejects_nofx_runtime_trend_conditions():
     assert "wide_5m_bollinger" in result.risk_tags
     assert "strong_4h_move" in result.risk_tags
     assert result.final_score <= 39
+
+
+def test_scorer_prefers_binance_5m_for_nofx_preflight():
+    scorer = GridScorer(ScoringConfig(min_volume_24h=10_000_000, min_oi_value=10_000_000, investment=500))
+    market = _market(
+        "SOLUSDT",
+        [100, 102, 99, 101, 98, 102, 100, 101, 99, 102, 100, 102],
+        okx_5m_closes=[
+            100,
+            101,
+            102,
+            101,
+            103,
+            104,
+            105,
+            104,
+            106,
+            107,
+            108,
+            107,
+            109,
+            110,
+            111,
+            110,
+            112,
+            113,
+            114,
+            113,
+            115,
+            116,
+            117,
+            116,
+            118,
+            119,
+            120,
+            119,
+            121,
+            122,
+            123,
+            122,
+            124,
+            125,
+            126,
+            125,
+            127,
+            128,
+            129,
+            128,
+            130,
+            131,
+            132,
+            131,
+            133,
+            134,
+            135,
+            134,
+            136,
+            137,
+        ],
+    )
+    market.binance_candles_5m = _tight_candles(
+        "SOLUSDT",
+        [100, 100.5, 99.8, 100.7, 100.2, 100.9, 100.1, 101.0, 100.4, 101.1] * 5,
+        wick_pct=0.001,
+    )
+
+    result = scorer.score(market)
+
+    assert result.nofx_preflight.source == "binance_5m"
+    assert result.nofx_preflight.verdict != "reject"
