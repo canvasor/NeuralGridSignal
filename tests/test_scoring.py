@@ -41,6 +41,7 @@ def _market(symbol, closes, volume=80_000_000, oi=30_000_000, funding=0.00005):
         ),
         okx_candles_15m=_candles(symbol, closes),
         okx_candles_1h=_candles(symbol, closes[::2] or closes),
+        okx_candles_4h=_candles(symbol, closes[::4] or closes),
         okx_funding=FundingSnapshot(symbol=symbol, funding_rate=funding),
         okx_oi=OpenInterestSnapshot(symbol=symbol, oi_value=oi, oi_change_1h=1.0),
         okx_orderbook=OrderBookSnapshot(symbol=symbol, best_bid=price * 0.9998, best_ask=price * 1.0002),
@@ -91,3 +92,25 @@ def test_scorer_caps_confidence_for_neutral_defensive():
 
     assert result.direction == "neutral_defensive"
     assert result.confidence <= 84
+
+
+def test_scorer_penalizes_slow_downtrend_despite_range_crossings():
+    scorer = GridScorer(ScoringConfig(min_volume_24h=10_000_000, min_oi_value=10_000_000, investment=500))
+    choppy = _market("DOGEUSDT", [100, 104, 98, 105, 97, 104, 99, 105, 98, 104, 100, 105])
+    slow_downtrend = _market("CLUSDT", [110, 111, 108, 109, 106, 107, 104, 105, 102, 103, 100, 101])
+
+    choppy_score = scorer.score(choppy)
+    downtrend_score = scorer.score(slow_downtrend)
+
+    assert "trend_risk" in downtrend_score.risk_tags
+    assert choppy_score.final_score > downtrend_score.final_score
+
+
+def test_scorer_uses_optimized_backtest_parameters():
+    scorer = GridScorer(ScoringConfig(min_volume_24h=10_000_000, min_oi_value=10_000_000, investment=500))
+    result = scorer.score(_market("RANGEUSDT", [100, 102, 98, 103, 97, 102, 99, 101, 98, 103, 100, 102]))
+
+    assert result.recommended_grid_count >= 6
+    assert result.recommended_atr_multiplier >= 2.0
+    assert result.grid_lower_price > 0
+    assert result.grid_upper_price > result.grid_lower_price

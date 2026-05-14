@@ -3,7 +3,7 @@ import io
 from urllib.error import URLError
 from urllib.error import HTTPError
 
-from neural_grid_signal.models import BacktestResult, GridScoreResult
+from neural_grid_signal.models import BacktestResult, CandidateStats, GridScoreResult
 from neural_grid_signal.notifier import TelegramNotifier, format_scheduler_event_message, format_telegram_message
 from neural_grid_signal.strategy import build_strategy_document
 
@@ -26,13 +26,19 @@ def _strategy_and_score():
 
 def test_format_telegram_message_contains_mobile_action_fields():
     strategy, score = _strategy_and_score()
-    message = format_telegram_message(strategy, score, "output/strategies/demo.json")
+    stats = CandidateStats(total_symbols=120, liquidity_pass_count=60, scoring_pool_count=40, hard_filter_pass_count=20)
+    message = format_telegram_message(strategy, score, "output/strategies/demo.json", stats=stats)
 
     assert "SOLUSDT" in message
     assert "83.4" in message
     assert "Grid Setup" in message
     assert "ATR Multiplier" in message
     assert "Action" in message
+    assert "Scan Pool" in message
+    assert "120" in message
+    assert "Liquidity Filtered Out" in message
+    assert "60" in message
+    assert "500 USDT" in message
     assert "output/strategies/demo.json" in message
 
 

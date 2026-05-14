@@ -64,6 +64,7 @@ class SymbolMarketData:
     okx_ticker: TickerSnapshot
     okx_candles_15m: list[Candle]
     okx_candles_1h: list[Candle]
+    okx_candles_4h: list[Candle] = field(default_factory=list)
     okx_funding: FundingSnapshot | None = None
     okx_oi: OpenInterestSnapshot | None = None
     okx_orderbook: OrderBookSnapshot | None = None
@@ -81,6 +82,10 @@ class BacktestResult:
     inventory_skew_abs: float = 0.0
     max_drawdown_pct: float = 0.0
     tags: list[str] = field(default_factory=list)
+    grid_count: int = 0
+    atr_multiplier: float = 0.0
+    lower_price: float = 0.0
+    upper_price: float = 0.0
 
 
 @dataclass
@@ -96,6 +101,23 @@ class GridScoreResult:
     breakdown: dict[str, float]
     backtest: BacktestResult
     hard_blocked: bool = False
+    recommended_grid_count: int = 8
+    recommended_atr_multiplier: float = 2.4
+    grid_lower_price: float = 0.0
+    grid_upper_price: float = 0.0
+
+
+@dataclass
+class CandidateStats:
+    total_symbols: int = 0
+    liquidity_pass_count: int = 0
+    scoring_pool_count: int = 0
+    hard_filter_pass_count: int = 0
+    min_contract_volume_24h: float = 0.0
+
+    @property
+    def liquidity_filtered_out_count(self) -> int:
+        return max(0, self.total_symbols - self.liquidity_pass_count)
 
 
 @dataclass
@@ -131,3 +153,4 @@ class RunResult:
     report_path: Path
     notification: NotificationResult | None = None
     all_scores: list[GridScoreResult] = field(default_factory=list)
+    candidate_stats: CandidateStats = field(default_factory=CandidateStats)

@@ -28,6 +28,19 @@ python3 -m neural_grid_signal --schedule
 ./scripts/stop_scheduler.sh
 ```
 
+后台启动时可以把参数直接传给调度进程：
+
+```bash
+./scripts/start_scheduler.sh --investment 500 --limit 80
+```
+
+如果调度器已经在运行，启动脚本不会替换参数；需要先停止再用新参数启动：
+
+```bash
+./scripts/stop_scheduler.sh
+./scripts/start_scheduler.sh --investment 750 --limit 80
+```
+
 输出目录：
 
 - `output/strategies/`：nofx 可导入策略 JSON
@@ -47,6 +60,12 @@ python3 -m neural_grid_signal --schedule
 - `OPEN_AI_ENDPOINT`
 - `OPEN_AI_MODEL`
 - `OPEN_AI_API_KEY`
+
+常用运行参数：
+
+- `--investment 500`：网格本金，默认 500 USDT。
+- `--limit 80`：进入详细行情拉取和评分的候选数量上限。
+- `--log-level DEBUG`：调试日志级别。
 
 ## 测试
 

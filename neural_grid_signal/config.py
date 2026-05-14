@@ -70,7 +70,9 @@ class Settings:
     output_dir: Path = field(default_factory=lambda: Path("output"))
     candidate_limit: int = 40
     min_volume_24h: float = 10_000_000
+    min_contract_volume_24h: float = 10_000_000
     min_oi_value: float = 10_000_000
+    grid_investment_usdt: float = 500
     dry_run: bool = False
 
     @property
@@ -100,6 +102,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         output_dir=Path(source.get("GRID_SIGNAL_OUTPUT_DIR", "output")),
         candidate_limit=_int(source, "GRID_SIGNAL_CANDIDATE_LIMIT", 40),
         min_volume_24h=_float(source, "GRID_SIGNAL_MIN_VOLUME_24H", 10_000_000),
+        min_contract_volume_24h=_float(source, "GRID_SIGNAL_MIN_CONTRACT_VOLUME_24H", 10_000_000),
         min_oi_value=_float(source, "GRID_SIGNAL_MIN_OI_VALUE", 10_000_000),
+        grid_investment_usdt=_float(source, "GRID_SIGNAL_INVESTMENT_USDT", 500),
         dry_run=source.get("GRID_SIGNAL_DRY_RUN", "").lower() in {"1", "true", "yes", "on"},
     )

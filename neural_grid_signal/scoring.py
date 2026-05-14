@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from neural_grid_signal.backtest import simulate_grid
+from neural_grid_signal.backtest import optimize_grid
 from neural_grid_signal.indicators import (
+    atr,
     atr_percent,
     bollinger_width_percent,
     clamp,
@@ -24,6 +25,7 @@ class ScoringConfig:
     max_atr_pct: float = 8.0
     extreme_funding_abs: float = 0.0008
     max_abs_24h_change: float = 18.0
+    investment: float = 500
 
 
 class GridScorer:
@@ -45,7 +47,8 @@ class GridScorer:
         rsi_value = rsi(candles)
         position = close_position_in_range(candles)
         two_day_change = pct_change(candles[0].close, candles[-1].close) if candles else 0.0
-        backtest = simulate_grid(candles, grid_count=8, atr_multiplier=2.4, investment=200)
+        bound_atr = atr(data.okx_candles_4h or long_candles)
+        backtest = optimize_grid(candles, investment=self.config.investment, bound_atr=bound_atr)
 
         risk_tags: list[str] = []
         reasons: list[str] = []
@@ -68,7 +71,9 @@ class GridScorer:
             hard_blocked = True
         if abs(ticker.price_change_24h) > self.config.max_abs_24h_change:
             risk_tags.append("large_24h_move")
-        if efficiency > 0.72 or abs(two_day_change) > 14 or abs(slope) > 4:
+        slow_downtrend = two_day_change < -4 and slope < -0.2
+        slow_uptrend = two_day_change > 8 and slope > 0.35
+        if efficiency > 0.62 or abs(two_day_change) > 10 or abs(slope) > 1.8 or slow_downtrend or slow_uptrend:
             risk_tags.append("trend_risk")
         if position < 0.08 or position > 0.92:
             risk_tags.append("near_range_edge")
@@ -96,7 +101,7 @@ class GridScorer:
         if hard_blocked:
             final = min(final, 39.0)
         if "trend_risk" in risk_tags:
-            final -= 14.0
+            final -= 18.0 if slow_downtrend else 14.0
         if "near_range_edge" in risk_tags:
             final -= 7.0
         final = clamp(final, 0.0, 100.0)
@@ -137,6 +142,10 @@ class GridScorer:
             },
             backtest=backtest,
             hard_blocked=hard_blocked,
+            recommended_grid_count=backtest.grid_count or 8,
+            recommended_atr_multiplier=backtest.atr_multiplier or 2.4,
+            grid_lower_price=backtest.lower_price,
+            grid_upper_price=backtest.upper_price,
         )
 
     def rank(self, rows: list[SymbolMarketData]) -> list[GridScoreResult]:

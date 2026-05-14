@@ -14,19 +14,9 @@ def _iso(dt: datetime | None) -> str:
     return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
-def _investment(symbol: str, direction: str) -> float:
-    if direction in {"neutral_defensive", "wait"}:
-        return 120
-    if symbol.startswith("ETH"):
-        return 220
-    if symbol.startswith("BTC"):
-        return 240
-    if symbol.startswith("SOL"):
-        return 180
-    return 160
-
-
 def _grid_count(score: GridScoreResult) -> int:
+    if score.recommended_grid_count > 0:
+        return score.recommended_grid_count
     if score.direction == "long_bias":
         return 8 if score.atr_pct <= 4.2 else 6
     if score.direction == "neutral_light_long":
@@ -37,6 +27,8 @@ def _grid_count(score: GridScoreResult) -> int:
 
 
 def _atr_multiplier(score: GridScoreResult) -> float:
+    if score.recommended_atr_multiplier > 0:
+        return round(score.recommended_atr_multiplier, 2)
     if score.atr_pct <= 1.2:
         value = 2.1
     elif score.atr_pct <= 2.8:
@@ -171,14 +163,19 @@ def _common_config(symbol: str, grid_config: dict[str, Any], min_confidence: int
     }
 
 
-def build_strategy_document(score: GridScoreResult, exported_at: datetime | None = None) -> StrategyDocument:
+def build_strategy_document(
+    score: GridScoreResult,
+    exported_at: datetime | None = None,
+    *,
+    investment: float = 500,
+) -> StrategyDocument:
     symbol = score.symbol.upper()
     distribution, bias = _distribution_and_bias(score)
     max_drawdown, stop_loss, daily_loss = _risk_params(score)
     grid_config = {
         "symbol": symbol,
         "grid_count": _grid_count(score),
-        "total_investment": _investment(symbol, score.direction),
+        "total_investment": round(float(investment), 2),
         "leverage": 2,
         "upper_price": 0,
         "lower_price": 0,

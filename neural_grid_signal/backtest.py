@@ -4,17 +4,25 @@ from neural_grid_signal.indicators import atr, atr_percent, max_drawdown_percent
 from neural_grid_signal.models import BacktestResult, Candle
 
 
-def _levels(candles: list[Candle], grid_count: int, atr_multiplier: float) -> list[float]:
-    lows = [c.low for c in candles if c.low > 0]
-    highs = [c.high for c in candles if c.high > 0]
-    if not lows or not highs or grid_count < 2:
-        return []
+def grid_bounds(candles: list[Candle], atr_multiplier: float, bound_atr: float | None = None) -> tuple[float, float]:
+    if not candles:
+        return 0.0, 0.0
     current_price = candles[-1].close
-    half_range = atr(candles) * max(0.1, atr_multiplier)
-    if current_price <= 0 or half_range <= 0:
+    if current_price <= 0:
+        return 0.0, 0.0
+    atr_value = bound_atr if bound_atr is not None and bound_atr > 0 else atr(candles)
+    half_range = atr_value * max(0.1, atr_multiplier)
+    if half_range <= 0:
+        return 0.0, 0.0
+    return max(0.0, current_price - half_range), current_price + half_range
+
+
+def _levels(candles: list[Candle], grid_count: int, atr_multiplier: float, bound_atr: float | None = None) -> list[float]:
+    if grid_count < 2:
         return []
-    low = max(0.0, current_price - half_range)
-    high = current_price + half_range
+    low, high = grid_bounds(candles, atr_multiplier, bound_atr)
+    if low <= 0 or high <= low:
+        return []
     spacing = (high - low) / (grid_count - 1)
     return [low + spacing * idx for idx in range(grid_count)]
 
@@ -25,11 +33,12 @@ def simulate_grid(
     atr_multiplier: float,
     investment: float,
     fee_bps: float = 4.0,
+    bound_atr: float | None = None,
 ) -> BacktestResult:
     if len(candles) < max(6, grid_count):
         return BacktestResult(score=0.0, tags=["insufficient_data"])
 
-    levels = _levels(candles, grid_count, atr_multiplier)
+    levels = _levels(candles, grid_count, atr_multiplier, bound_atr)
     if not levels:
         return BacktestResult(score=0.0, tags=["invalid_range"])
 
@@ -98,4 +107,25 @@ def simulate_grid(
         inventory_skew_abs=round(abs(inventory) / max(1, grid_count), 4),
         max_drawdown_pct=drawdown,
         tags=tags,
+        grid_count=grid_count,
+        atr_multiplier=atr_multiplier,
+        lower_price=round(levels[0], 8),
+        upper_price=round(levels[-1], 8),
     )
+
+
+def optimize_grid(
+    candles: list[Candle],
+    *,
+    investment: float,
+    bound_atr: float | None = None,
+    grid_counts: tuple[int, ...] = (6, 7, 8, 9, 10, 11, 12),
+    atr_multipliers: tuple[float, ...] = (2.0, 2.2, 2.4, 2.6, 2.8, 3.0),
+) -> BacktestResult:
+    best = BacktestResult(score=0.0, tags=["no_grid_candidate"])
+    for grid_count in grid_counts:
+        for multiplier in atr_multipliers:
+            result = simulate_grid(candles, grid_count, multiplier, investment, bound_atr=bound_atr)
+            if result.score > best.score:
+                best = result
+    return best

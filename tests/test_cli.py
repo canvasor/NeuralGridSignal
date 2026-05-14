@@ -1,7 +1,7 @@
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from neural_grid_signal.__main__ import build_log_handlers, format_run_result
+from neural_grid_signal.__main__ import build_log_handlers, build_parser, format_run_result
 from neural_grid_signal.models import BacktestResult, GridScoreResult, NotificationResult, RunResult, StrategyDocument
 
 
@@ -44,3 +44,10 @@ def test_build_log_handlers_uses_rotating_file_handler(tmp_path):
     finally:
         for handler in handlers:
             handler.close()
+
+
+def test_parser_accepts_grid_investment_override():
+    args = build_parser().parse_args(["--schedule", "--investment", "750"])
+
+    assert args.schedule is True
+    assert args.investment == 750

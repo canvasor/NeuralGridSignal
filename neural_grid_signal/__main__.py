@@ -26,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--schedule", action="store_true", help="run continuously at configured Beijing times")
     parser.add_argument("--dry-run", action="store_true", help="do not send Telegram message")
     parser.add_argument("--limit", type=int, default=None, help="candidate count")
+    parser.add_argument("--investment", type=float, default=None, help="grid investment in USDT")
     parser.add_argument("--log-level", default="INFO", help="logging level")
     parser.add_argument("--log-file", default="logs/grid_signal.log", help="log file path")
     return parser
@@ -65,6 +66,8 @@ async def _run(args: argparse.Namespace) -> None:
     settings = load_settings()
     if args.dry_run:
         settings.dry_run = True
+    if args.investment is not None:
+        settings.grid_investment_usdt = args.investment
     runner = GridSignalRunner(settings=settings)
     if args.schedule and not args.once:
         await _run_scheduled(args, settings, runner)

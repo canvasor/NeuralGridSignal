@@ -17,6 +17,10 @@ def _score(symbol="SOLUSDT", final_score=82, direction="long_bias", atr_pct=2.4)
         reasons=["震荡质量较好", "Binance 辅助确认"],
         breakdown={"range": 24, "risk": 18},
         backtest=BacktestResult(score=76, grid_hits=18, realized_profit_proxy=3.2, inventory_skew_abs=0.2),
+        recommended_grid_count=9,
+        recommended_atr_multiplier=2.6,
+        grid_lower_price=95,
+        grid_upper_price=105,
     )
 
 
@@ -30,6 +34,9 @@ def test_build_strategy_document_matches_nofx_grid_import_shape():
     assert payload["config"]["grid_config"]["distribution"] == "pyramid"
     assert 0.75 <= payload["config"]["grid_config"]["direction_bias_ratio"] <= 0.85
     assert payload["config"]["grid_config"]["leverage"] == 2
+    assert payload["config"]["grid_config"]["total_investment"] == 500
+    assert payload["config"]["grid_config"]["grid_count"] == 9
+    assert payload["config"]["grid_config"]["atr_multiplier"] == 2.6
     assert "prompt_sections" in payload["config"]
     json.dumps(payload, ensure_ascii=False)
 
@@ -49,6 +56,12 @@ def test_build_strategy_document_marks_neutral_defensive_as_observation():
     assert "防守观察" in payload["name"]
     assert "防守观察" in payload["config"]["prompt_sections"]["role_definition"]
     grid = payload["config"]["grid_config"]
-    assert grid["total_investment"] <= 140
+    assert grid["total_investment"] == 500
     assert grid["atr_multiplier"] >= 2.35
     assert grid["direction_bias_ratio"] == 0.55
+
+
+def test_build_strategy_document_accepts_investment_override():
+    payload = build_strategy_document(_score(), investment=750).to_dict()
+
+    assert payload["config"]["grid_config"]["total_investment"] == 750

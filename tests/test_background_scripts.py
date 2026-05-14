@@ -22,6 +22,7 @@ def test_start_scheduler_uses_nohup_schedule_and_pidfile():
     assert "run/grid_signal.pid" in content
     assert "logs/grid_signal.log" in content
     assert "logs/grid_signal.out" in content
+    assert '"$@"' in content
 
 
 def test_stop_and_status_use_same_pidfile():

@@ -1,4 +1,4 @@
-from neural_grid_signal.backtest import simulate_grid
+from neural_grid_signal.backtest import grid_bounds, optimize_grid, simulate_grid
 from neural_grid_signal.models import Candle
 
 
@@ -46,3 +46,33 @@ def test_grid_backtest_uses_atr_multiplier_to_size_bounds():
     wide = simulate_grid(candles, grid_count=8, atr_multiplier=3.0, investment=200)
 
     assert narrow.grid_hits != wide.grid_hits
+
+
+def test_grid_bounds_match_nofx_atr_bounds_formula():
+    candles = _candles([100, 101, 100, 100])
+
+    lower, upper = grid_bounds(candles, atr_multiplier=2.0, bound_atr=4.0)
+
+    assert lower == 92
+    assert upper == 108
+
+
+def test_grid_backtest_records_selected_range_parameters():
+    candles = _candles([100, 102, 98, 103, 97, 102, 99, 101, 98, 103, 100, 102])
+
+    result = simulate_grid(candles, grid_count=8, atr_multiplier=2.5, investment=500, bound_atr=3.0)
+
+    assert result.grid_count == 8
+    assert result.atr_multiplier == 2.5
+    assert result.lower_price > 0
+    assert result.upper_price > result.lower_price
+
+
+def test_optimize_grid_returns_best_grid_parameters():
+    candles = _candles([100, 102, 98, 103, 97, 102, 99, 101, 98, 103, 100, 102])
+
+    result = optimize_grid(candles, investment=500, bound_atr=3.0, grid_counts=(6, 8), atr_multipliers=(2.0, 2.6))
+
+    assert result.grid_count in {6, 8}
+    assert result.atr_multiplier in {2.0, 2.6}
+    assert result.score > 0

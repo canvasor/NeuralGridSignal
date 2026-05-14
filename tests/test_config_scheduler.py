@@ -17,6 +17,8 @@ def test_load_settings_uses_expected_environment_names():
             "OPEN_AI_MODEL": "model",
             "OPEN_AI_API_KEY": "openai-key",
             "GRID_SIGNAL_SCHEDULE_TIMES": "08:00,20:00",
+            "GRID_SIGNAL_INVESTMENT_USDT": "750",
+            "GRID_SIGNAL_MIN_CONTRACT_VOLUME_24H": "25000000",
         }
     )
 
@@ -25,6 +27,8 @@ def test_load_settings_uses_expected_environment_names():
     assert settings.telegram_bot_token == "tg-token"
     assert settings.openai_model == "model"
     assert settings.schedule_times == ("08:00", "20:00")
+    assert settings.grid_investment_usdt == 750
+    assert settings.min_contract_volume_24h == 25_000_000
 
 
 def test_parse_schedule_times_rejects_bad_values():

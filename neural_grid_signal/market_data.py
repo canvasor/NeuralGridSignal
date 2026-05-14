@@ -6,7 +6,7 @@ import logging
 from neural_grid_signal.config import Settings
 from neural_grid_signal.exchanges.binance import BinanceFuturesClient
 from neural_grid_signal.exchanges.okx import OKXClient
-from neural_grid_signal.models import SymbolMarketData
+from neural_grid_signal.models import CandidateStats, SymbolMarketData
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class CombinedMarketDataProvider:
     def __init__(self, settings: Settings):
         self.settings = settings
+        self.last_stats = CandidateStats(min_contract_volume_24h=settings.min_contract_volume_24h)
         self.okx = OKXClient(
             api_key=settings.okx_api_key,
             api_secret=settings.okx_api_secret,
@@ -26,6 +27,10 @@ class CombinedMarketDataProvider:
 
     async def fetch_candidates(self, limit: int) -> list[SymbolMarketData]:
         okx_tickers = await self.okx.get_all_tickers()
+        self.last_stats = CandidateStats(
+            total_symbols=len(okx_tickers),
+            min_contract_volume_24h=self.settings.min_contract_volume_24h,
+        )
         if not okx_tickers:
             return []
         ranked = sorted(
@@ -33,7 +38,9 @@ class CombinedMarketDataProvider:
             key=lambda item: item.volume_24h,
             reverse=True,
         )
-        ranked = [item for item in ranked if item.volume_24h >= self.settings.min_volume_24h / 2][: max(1, limit)]
+        liquid = [item for item in ranked if item.volume_24h >= self.settings.min_contract_volume_24h]
+        self.last_stats.liquidity_pass_count = len(liquid)
+        ranked = liquid[: max(1, limit)]
 
         binance_tickers, binance_funding = await asyncio.gather(
             self.binance.get_all_tickers(),
@@ -51,13 +58,15 @@ class CombinedMarketDataProvider:
                 output.append(row)
             elif isinstance(row, Exception):
                 logger.debug("candidate skipped: %s", row)
+        self.last_stats.scoring_pool_count = len(output)
         return output
 
     async def _build_symbol_row(self, ticker, binance_tickers, binance_funding) -> SymbolMarketData | None:
         symbol = ticker.symbol
-        okx_15m, okx_1h, okx_funding, okx_oi, orderbook = await asyncio.gather(
+        okx_15m, okx_1h, okx_4h, okx_funding, okx_oi, orderbook = await asyncio.gather(
             self.okx.get_klines(symbol, "15m", 192),
             self.okx.get_klines(symbol, "1h", 168),
+            self.okx.get_klines(symbol, "4h", 20),
             self.okx.get_funding_rate(symbol),
             self.okx.get_open_interest(symbol, ticker.price),
             self.okx.get_orderbook(symbol, 20),
@@ -77,6 +86,7 @@ class CombinedMarketDataProvider:
             okx_ticker=ticker,
             okx_candles_15m=okx_15m,
             okx_candles_1h=okx_1h,
+            okx_candles_4h=okx_4h,
             okx_funding=okx_funding,
             okx_oi=okx_oi,
             okx_orderbook=orderbook,

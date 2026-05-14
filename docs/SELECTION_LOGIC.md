@@ -6,7 +6,15 @@
 
 ## 候选池
 
-默认从 OKX USDT 永续合约中按 24h 成交额选前 `GRID_SIGNAL_CANDIDATE_LIMIT` 个，并过滤明显低流动性币种。
+默认从 OKX USDT 永续合约中先按 `GRID_SIGNAL_MIN_CONTRACT_VOLUME_24H` 过滤 24h 合约成交额，再从通过流动性过滤的币种中按成交额排序，取前 `GRID_SIGNAL_CANDIDATE_LIMIT` 个进入详细行情拉取和评分。
+
+报告和 Telegram 会记录：
+
+- OKX 合约总数。
+- 通过流动性过滤数量。
+- 被流动性过滤掉数量。
+- 进入网格评分池数量。
+- 通过硬风控数量。
 
 Binance 数据只做辅助：
 
@@ -24,7 +32,7 @@ Binance 数据只做辅助：
 - `too_high_volatility`：ATR% 高于 8%，突破和扫损风险高。
 - `extreme_funding`：资金费率绝对值高于 0.08%。
 - `large_24h_move`：24h 涨跌幅绝对值高于 18%。
-- `trend_risk`：2 天区间效率过高、EMA 斜率过大或 2 天涨跌幅过大。
+- `trend_risk`：2 天区间效率过高、EMA 斜率过大、2 天涨跌幅过大，或出现缓慢单边上行/下行。
 - `near_range_edge`：当前价格贴近 2 天区间边界。
 - `oi_spike`：短期 OI 异常扩张。
 
@@ -61,11 +69,13 @@ abs(last_close - first_close) / sum(abs(close[i] - close[i-1]))
 
 回测不模拟真实交易所成交队列，只做结构判断：
 
-- 使用最近 2 天 K 线高低点生成网格层。
+- 使用和 nofx 运行时一致的 ATR 边界公式：当前价 ± `4h ATR14 * atr_multiplier`。
+- 在多个 `grid_count` 与 `atr_multiplier` 组合中搜索综合分最高的参数。
 - 统计 K 线收盘价穿越网格层次数。
 - 穿越越多，说明网格触发潜力越高。
 - 库存偏移越大，说明单边风险越高。
 - 最大回撤越大，评分越低。
+- 收益代理、最大回撤、网格上下沿、最佳网格数和 ATR 倍数会写入报告和通知。
 
 该回测是选币维度，不是收益承诺。
 
@@ -100,10 +110,16 @@ abs(last_close - first_close) / sum(abs(close[i] - close[i-1]))
 
 - `distribution = gaussian`
 - `direction_bias_ratio = 0.55`
-- `grid_count = 7`
-- `total_investment = 120`
-- `atr_multiplier` 会在基础值上额外放宽，避免低波动窄网格频繁成交
+- `grid_count`、`atr_multiplier` 由回测搜索结果决定
+- `total_investment` 默认使用 `GRID_SIGNAL_INVESTMENT_USDT=500`，也可以用 `--investment` 覆盖
 - 只适合作为观察或小资金低密度网格，导入前需要人工确认区间仍有效
+
+本金：
+
+- 默认 `500` USDT。
+- 环境变量：`GRID_SIGNAL_INVESTMENT_USDT`。
+- 命令行：`--investment 750`。
+- 本金会同时应用到策略 JSON 的 `grid_config.total_investment` 和回测。
 
 止损参数：
 
@@ -118,7 +134,7 @@ abs(last_close - first_close) / sum(abs(close[i] - close[i-1]))
 - 如果选出的币太少，先降低 `GRID_SIGNAL_MIN_OI_VALUE`，不要放宽 ATR 上限。
 - 如果经常选到单边币，提高 `trend_risk` 扣分或降低区间效率阈值。
 - 如果网格触发太少，提高候选 ATR 甜区下限。
-- 如果回撤偏大，提高 `atr_multiplier`，降低 `total_investment`，减少 `grid_count`。
+- 如果回撤偏大，提高成交额/OI 阈值，或降低 `--investment`；`grid_count` 和 `atr_multiplier` 当前由回测搜索决定。
 
 ## Telegram 通知解释
 

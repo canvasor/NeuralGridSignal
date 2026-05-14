@@ -9,7 +9,7 @@ from datetime import datetime
 from urllib.error import HTTPError
 
 from neural_grid_signal.http_client import urlopen_with_retries
-from neural_grid_signal.models import GridScoreResult, NotificationResult, StrategyDocument
+from neural_grid_signal.models import CandidateStats, GridScoreResult, NotificationResult, StrategyDocument
 
 
 def _action_text(score: GridScoreResult) -> str:
@@ -22,14 +22,41 @@ def _action_text(score: GridScoreResult) -> str:
     return "人工复核：评分未到强推荐，确认风险后再导入"
 
 
-def format_telegram_message(strategy: StrategyDocument, score: GridScoreResult, strategy_path: str) -> str:
+def _number_text(value: object) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    return str(int(number)) if number.is_integer() else f"{number:.2f}".rstrip("0").rstrip(".")
+
+
+def format_telegram_message(
+    strategy: StrategyDocument,
+    score: GridScoreResult,
+    strategy_path: str,
+    *,
+    stats: CandidateStats | None = None,
+) -> str:
     grid = strategy.config["grid_config"]
     risks = ", ".join(score.risk_tags) if score.risk_tags else "none"
     reasons = "；".join(score.reasons[:3]) if score.reasons else "无"
+    scan_lines = []
+    if stats is not None:
+        scan_lines = [
+            "",
+            "🔎 Scan Pool",
+            f"• Total OKX Symbols: {stats.total_symbols}",
+            f"• Liquidity Passed: {stats.liquidity_pass_count}",
+            f"• Liquidity Filtered Out: {stats.liquidity_filtered_out_count}",
+            f"• Grid Screening Pool: {stats.scoring_pool_count}",
+            f"• Hard Filter Passed: {stats.hard_filter_pass_count}",
+        ]
     return "\n".join(
         [
             f"🔥 AI Grid Signal | {score.symbol}",
             "━━━━━━━━━━━━━━━━━━━━",
+            *scan_lines,
+            "",
             "📊 Score",
             f"• Final: {score.final_score:.1f}",
             f"• Confidence: {score.confidence:.1f}",
@@ -40,17 +67,20 @@ def format_telegram_message(strategy: StrategyDocument, score: GridScoreResult, 
             "",
             "⚙️ Grid Setup",
             f"• Grid Count: {grid['grid_count']}",
-            f"• Investment: {grid['total_investment']} USDT",
+            f"• Investment: {_number_text(grid['total_investment'])} USDT",
             f"• Leverage: {grid['leverage']}x",
             f"• Distribution: {grid['distribution']}",
             f"• Bias Ratio: {grid['direction_bias_ratio']}",
             f"• ATR Multiplier: {grid['atr_multiplier']}",
             f"• Stop Loss: {grid['stop_loss_pct']}%",
             f"• Daily Loss Limit: {grid['daily_loss_limit_pct']}%",
+            f"• Range: {score.grid_lower_price:.8g} - {score.grid_upper_price:.8g}",
             "",
             "🧪 Backtest",
             f"• Score: {score.backtest.score:.1f}",
             f"• Grid Hits: {score.backtest.grid_hits}",
+            f"• Profit Proxy: {score.backtest.realized_profit_proxy}",
+            f"• Max Drawdown: {score.backtest.max_drawdown_pct:.2f}%",
             f"• Inventory Skew: {score.backtest.inventory_skew_abs:.2f}",
             "",
             "🛡 Risk",
@@ -116,8 +146,9 @@ class TelegramNotifier:
         strategy: StrategyDocument,
         score: GridScoreResult,
         strategy_path: str,
+        stats: CandidateStats | None = None,
     ) -> NotificationResult:
-        message = format_telegram_message(strategy, score, strategy_path)
+        message = format_telegram_message(strategy, score, strategy_path, stats=stats)
         return await self.send_text(message)
 
     async def send_scheduler_event(
