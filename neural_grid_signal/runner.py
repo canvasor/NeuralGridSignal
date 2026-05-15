@@ -126,6 +126,7 @@ class GridSignalRunner:
     ) -> str:
         grid = strategy.config["grid_config"] if strategy is not None else None
         preflight = selected.nofx_preflight
+        daily = selected.daily_trend
         bounds_mode = "none" if grid is None else "atr_auto" if grid.get("use_atr_bounds") else "explicit"
         lines = [
             f"# {selected.symbol} AI 网格信号",
@@ -158,6 +159,19 @@ class GridSignalRunner:
             f"- risk_tags: {', '.join(selected.risk_tags)}",
             f"- backtest_profit_proxy: {selected.backtest.realized_profit_proxy}",
             f"- backtest_max_drawdown_pct: {selected.backtest.max_drawdown_pct}",
+            "",
+            "## Daily Trend",
+            "",
+            f"- source: {daily.source}",
+            f"- verdict: {daily.verdict}",
+            f"- change_7d: {daily.change_7d}",
+            f"- change_14d: {daily.change_14d}",
+            f"- change_30d: {daily.change_30d}",
+            f"- ema20_slope_pct: {daily.ema20_slope_pct}",
+            f"- close_vs_ema20_pct: {daily.close_vs_ema20_pct}",
+            f"- close_vs_ema50_pct: {daily.close_vs_ema50_pct}",
+            f"- range_position_30d: {daily.range_position_30d}",
+            f"- risk_tags: {', '.join(daily.risk_tags)}",
             "",
             "## NOFX Preflight",
             "",
@@ -208,9 +222,21 @@ class GridSignalRunner:
                     "verdict": selected.nofx_preflight.verdict,
                     "bollinger_width_5m": selected.nofx_preflight.bollinger_width_5m,
                     "price_change_4h": selected.nofx_preflight.price_change_4h,
+                    "grid_range_pct": selected.nofx_preflight.grid_range_pct,
                     "grid_spacing": selected.nofx_preflight.grid_spacing,
                     "display_spacing_ok": selected.nofx_preflight.display_spacing_ok,
                     "risk_tags": selected.nofx_preflight.risk_tags,
+                },
+                "daily_trend": {
+                    "source": selected.daily_trend.source,
+                    "verdict": selected.daily_trend.verdict,
+                    "change_7d": selected.daily_trend.change_7d,
+                    "change_14d": selected.daily_trend.change_14d,
+                    "change_30d": selected.daily_trend.change_30d,
+                    "ema20_slope_pct": selected.daily_trend.ema20_slope_pct,
+                    "close_vs_ema20_pct": selected.daily_trend.close_vs_ema20_pct,
+                    "range_position_30d": selected.daily_trend.range_position_30d,
+                    "risk_tags": selected.daily_trend.risk_tags,
                 },
                 "backtest": {
                     "score": selected.backtest.score,

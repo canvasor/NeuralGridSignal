@@ -66,12 +66,14 @@ class SymbolMarketData:
     okx_candles_1h: list[Candle]
     okx_candles_4h: list[Candle] = field(default_factory=list)
     okx_candles_5m: list[Candle] = field(default_factory=list)
+    okx_candles_1d: list[Candle] = field(default_factory=list)
     okx_funding: FundingSnapshot | None = None
     okx_oi: OpenInterestSnapshot | None = None
     okx_orderbook: OrderBookSnapshot | None = None
     binance_ticker: TickerSnapshot | None = None
     binance_candles_5m: list[Candle] = field(default_factory=list)
     binance_candles_15m: list[Candle] = field(default_factory=list)
+    binance_candles_1d: list[Candle] = field(default_factory=list)
     binance_funding: FundingSnapshot | None = None
     binance_oi: OpenInterestSnapshot | None = None
 
@@ -109,6 +111,20 @@ class NofxPreflight:
 
 
 @dataclass
+class DailyTrend:
+    source: str = "unknown"
+    verdict: str = "unknown"
+    change_7d: float = 0.0
+    change_14d: float = 0.0
+    change_30d: float = 0.0
+    ema20_slope_pct: float = 0.0
+    close_vs_ema20_pct: float = 0.0
+    close_vs_ema50_pct: float = 0.0
+    range_position_30d: float = 0.5
+    risk_tags: list[str] = field(default_factory=list)
+
+
+@dataclass
 class GridScoreResult:
     symbol: str
     final_score: float
@@ -126,6 +142,7 @@ class GridScoreResult:
     grid_lower_price: float = 0.0
     grid_upper_price: float = 0.0
     nofx_preflight: NofxPreflight = field(default_factory=NofxPreflight)
+    daily_trend: DailyTrend = field(default_factory=DailyTrend)
 
 
 @dataclass

@@ -10,12 +10,13 @@ from neural_grid_signal.indicators import (
     bollinger_width_percent,
     clamp,
     close_position_in_range,
+    ema_values,
     ema_slope_percent,
     pct_change,
     range_efficiency,
     rsi,
 )
-from neural_grid_signal.models import BacktestResult, Candle, GridScoreResult, NofxPreflight, SymbolMarketData
+from neural_grid_signal.models import BacktestResult, Candle, DailyTrend, GridScoreResult, NofxPreflight, SymbolMarketData
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,13 @@ class ScoringConfig:
     max_abs_24h_change: float = 18.0
     investment: float = 500
     nofx_min_display_spacing: float = 0.005
+    ideal_grid_range_pct: float = 8.0
+    max_grid_range_pct: float = 12.0
+    hard_max_grid_range_pct: float = 15.0
+    daily_reject_change_7d: float = -6.0
+    daily_reject_change_14d: float = -10.0
+    daily_caution_change_7d: float = -3.0
+    daily_caution_change_14d: float = -5.0
 
 
 class GridScorer:
@@ -55,8 +63,11 @@ class GridScorer:
             investment=self.config.investment,
             bound_atr=bound_atr,
             min_spacing=self.config.nofx_min_display_spacing,
+            max_range_pct=self.config.hard_max_grid_range_pct,
         )
         nofx_preflight = self._nofx_preflight(data, backtest)
+        daily_trend = self._daily_trend(data)
+        grid_range_pct = self._grid_range_pct(backtest, candles[-1].close if candles else 0.0)
 
         risk_tags: list[str] = []
         reasons: list[str] = []
@@ -92,22 +103,39 @@ class GridScorer:
         risk_tags.extend(nofx_preflight.risk_tags)
         if nofx_preflight.verdict == "reject":
             hard_blocked = True
+        if backtest.score <= 0 or backtest.grid_count <= 0:
+            risk_tags.extend(backtest.tags)
+            hard_blocked = True
+        if grid_range_pct > self.config.hard_max_grid_range_pct:
+            risk_tags.append("grid_range_too_wide")
+            hard_blocked = True
+        elif grid_range_pct > self.config.max_grid_range_pct:
+            risk_tags.append("wide_grid_range")
+        elif grid_range_pct > self.config.ideal_grid_range_pct:
+            risk_tags.append("moderately_wide_grid_range")
+        risk_tags.extend(daily_trend.risk_tags)
+        if daily_trend.verdict == "reject":
+            hard_blocked = True
 
         liquidity_score = self._liquidity_score(ticker.volume_24h, oi_value, data.okx_orderbook.spread_bps if data.okx_orderbook else 8.0)
         volatility_score = self._volatility_score(atr_pct)
         range_score = self._range_score(efficiency, position, boll_width)
+        grid_range_score = self._grid_range_score(grid_range_pct)
+        daily_score = self._daily_trend_score(daily_trend)
         funding_score = self._funding_score(funding)
         binance_score = self._binance_confirmation_score(data, two_day_change, atr_pct)
         risk_score = self._risk_score(risk_tags)
 
         final = (
-            liquidity_score * 0.18
-            + volatility_score * 0.16
-            + range_score * 0.24
-            + backtest.score * 0.22
-            + funding_score * 0.08
-            + binance_score * 0.06
-            + risk_score * 0.06
+            liquidity_score * 0.15
+            + volatility_score * 0.13
+            + range_score * 0.17
+            + backtest.score * 0.16
+            + daily_score * 0.17
+            + grid_range_score * 0.11
+            + funding_score * 0.05
+            + binance_score * 0.03
+            + risk_score * 0.03
         )
         if hard_blocked:
             final = min(final, 39.0)
@@ -117,6 +145,12 @@ class GridScorer:
             final -= 7.0
         if nofx_preflight.verdict == "caution":
             final -= 8.0
+        if daily_trend.verdict == "caution":
+            final -= 10.0
+        if "moderately_wide_grid_range" in risk_tags:
+            final -= 8.0
+        elif "wide_grid_range" in risk_tags:
+            final -= 15.0
         final = clamp(final, 0.0, 100.0)
 
         if range_score >= 65:
@@ -129,6 +163,12 @@ class GridScorer:
             reasons.append("nofx 运行时预检不通过，导入后大概率会暂停或持有")
         elif nofx_preflight.verdict == "caution":
             reasons.append("nofx 运行时预检提示谨慎，需降低评分")
+        if daily_trend.verdict == "reject":
+            reasons.append("日线趋势偏空或处于下跌延续，已拦截网格信号")
+        elif daily_trend.verdict == "caution":
+            reasons.append("日线趋势质量一般，降低网格评分")
+        if "grid_range_too_wide" in risk_tags or "wide_grid_range" in risk_tags:
+            reasons.append("网格范围过宽，历史 hits 可靠性下降且单边风险扩大")
         if data.binance_ticker:
             reasons.append("Binance 同名合约数据已纳入辅助确认")
 
@@ -155,6 +195,8 @@ class GridScorer:
                 "volatility": round(volatility_score, 2),
                 "range": round(range_score, 2),
                 "backtest": round(backtest.score, 2),
+                "daily_trend": round(daily_score, 2),
+                "grid_range": round(grid_range_score, 2),
                 "funding": round(funding_score, 2),
                 "binance": round(binance_score, 2),
                 "risk": round(risk_score, 2),
@@ -166,6 +208,7 @@ class GridScorer:
             grid_lower_price=backtest.lower_price,
             grid_upper_price=backtest.upper_price,
             nofx_preflight=nofx_preflight,
+            daily_trend=daily_trend,
         )
 
     def rank(self, rows: list[SymbolMarketData]) -> list[GridScoreResult]:
@@ -196,6 +239,41 @@ class GridScorer:
         return clamp(efficiency_score + center_score + width_score, 0, 100)
 
     @staticmethod
+    def _grid_range_score(grid_range_pct: float) -> float:
+        if grid_range_pct <= 0:
+            return 35.0
+        if 3.0 <= grid_range_pct <= 7.0:
+            return 100.0
+        if grid_range_pct < 3.0:
+            return 72.0 + grid_range_pct / 3.0 * 18.0
+        if grid_range_pct <= 10.0:
+            return 92.0 - (grid_range_pct - 7.0) * 9.0
+        if grid_range_pct <= 12.0:
+            return 60.0 - (grid_range_pct - 10.0) * 10.0
+        if grid_range_pct <= 15.0:
+            return 35.0 - (grid_range_pct - 12.0) * 8.0
+        return max(0.0, 10.0 - (grid_range_pct - 15.0) * 5.0)
+
+    @staticmethod
+    def _daily_trend_score(trend: DailyTrend) -> float:
+        if trend.verdict == "unknown":
+            return 45.0
+        score = 88.0
+        if trend.change_7d < 0:
+            score += trend.change_7d * 4.0
+        if trend.change_14d < 0:
+            score += trend.change_14d * 2.0
+        if trend.ema20_slope_pct < 0:
+            score += trend.ema20_slope_pct * 8.0
+        if trend.close_vs_ema20_pct < 0:
+            score += trend.close_vs_ema20_pct * 2.5
+        if trend.range_position_30d < 0.2:
+            score -= (0.2 - trend.range_position_30d) * 60.0
+        if trend.change_7d > 12 or trend.change_14d > 20:
+            score -= 18.0
+        return clamp(score, 0.0, 100.0)
+
+    @staticmethod
     def _funding_score(funding: float) -> float:
         return clamp(100 - abs(funding) / 0.0008 * 100, 0, 100)
 
@@ -211,8 +289,98 @@ class GridScorer:
             "trend_risk": 25,
             "near_range_edge": 15,
             "oi_spike": 15,
+            "no_grid_candidate": 30,
+            "grid_range_too_wide": 35,
+            "wide_grid_range": 22,
+            "moderately_wide_grid_range": 12,
+            "daily_trend_missing": 10,
+            "daily_downtrend_reject": 45,
+            "daily_downtrend_caution": 24,
+            "below_falling_daily_ema": 22,
+            "near_daily_range_low": 18,
+            "daily_uptrend_extension": 16,
         }
         return clamp(100 - sum(penalties.get(tag, 0) for tag in set(tags)), 0, 100)
+
+    def _daily_trend(self, data: SymbolMarketData) -> DailyTrend:
+        candles = data.okx_candles_1d or data.binance_candles_1d
+        source = "okx_1d" if data.okx_candles_1d else "binance_1d" if data.binance_candles_1d else "missing"
+        if len(candles) < 8:
+            return DailyTrend(source=source, verdict="unknown", risk_tags=["daily_trend_missing"])
+
+        closes = [c.close for c in candles if c.close > 0]
+        if len(closes) < 8:
+            return DailyTrend(source=source, verdict="unknown", risk_tags=["daily_trend_missing"])
+
+        current = closes[-1]
+        ema20 = ema_values(closes, 20)
+        ema50 = ema_values(closes, 50)
+        ema20_last = ema20[-1] if ema20 else current
+        ema50_last = ema50[-1] if ema50 else current
+        change_7d = self._period_change(candles, 7)
+        change_14d = self._period_change(candles, 14)
+        change_30d = self._period_change(candles, 30)
+        slope = ema_slope_percent(candles, period=20, lookback=min(5, max(1, len(candles) // 8)))
+        close_vs_ema20 = pct_change(ema20_last, current) if ema20_last > 0 else 0.0
+        close_vs_ema50 = pct_change(ema50_last, current) if ema50_last > 0 else 0.0
+        range_position = close_position_in_range(candles[-30:])
+
+        risk_tags: list[str] = []
+        if close_vs_ema20 < -2.0 and slope < -0.25:
+            risk_tags.append("below_falling_daily_ema")
+        if range_position < 0.18 and change_14d < -4.0:
+            risk_tags.append("near_daily_range_low")
+        if change_7d > 12.0 or change_14d > 20.0:
+            risk_tags.append("daily_uptrend_extension")
+
+        reject = (
+            change_14d <= self.config.daily_reject_change_14d
+            or (change_7d <= self.config.daily_reject_change_7d and slope < -0.25)
+            or (close_vs_ema20 <= -4.0 and slope < -0.45 and change_7d < self.config.daily_caution_change_7d)
+            or (range_position < 0.12 and change_14d < self.config.daily_caution_change_14d)
+        )
+        downtrend_caution = (
+            change_7d <= self.config.daily_caution_change_7d
+            or change_14d <= self.config.daily_caution_change_14d
+            or slope < -0.35
+            or close_vs_ema20 < -2.0
+        )
+        caution = downtrend_caution or "daily_uptrend_extension" in risk_tags
+        if reject:
+            verdict = "reject"
+            risk_tags.append("daily_downtrend_reject")
+        elif caution:
+            verdict = "caution"
+            if downtrend_caution:
+                risk_tags.append("daily_downtrend_caution")
+        else:
+            verdict = "pass"
+
+        return DailyTrend(
+            source=source,
+            verdict=verdict,
+            change_7d=round(change_7d, 4),
+            change_14d=round(change_14d, 4),
+            change_30d=round(change_30d, 4),
+            ema20_slope_pct=round(slope, 4),
+            close_vs_ema20_pct=round(close_vs_ema20, 4),
+            close_vs_ema50_pct=round(close_vs_ema50, 4),
+            range_position_30d=round(range_position, 4),
+            risk_tags=list(dict.fromkeys(risk_tags)),
+        )
+
+    @staticmethod
+    def _period_change(candles: list[Candle], days: int) -> float:
+        if not candles:
+            return 0.0
+        start_index = -days - 1 if len(candles) > days else 0
+        return pct_change(candles[start_index].close, candles[-1].close)
+
+    @staticmethod
+    def _grid_range_pct(backtest: BacktestResult, current_price: float) -> float:
+        if current_price <= 0 or backtest.upper_price <= backtest.lower_price:
+            return 0.0
+        return (backtest.upper_price - backtest.lower_price) / current_price * 100
 
     def _nofx_preflight(self, data: SymbolMarketData, backtest: BacktestResult) -> NofxPreflight:
         candles = data.binance_candles_5m or data.okx_candles_5m

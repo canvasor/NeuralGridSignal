@@ -47,8 +47,17 @@ def _tight_candles(symbol, closes, wick_pct=0.002):
     return rows
 
 
-def _market(symbol, closes, volume=80_000_000, oi=30_000_000, funding=0.00005, okx_5m_closes=None):
+def _market(
+    symbol,
+    closes,
+    volume=80_000_000,
+    oi=30_000_000,
+    funding=0.00005,
+    okx_5m_closes=None,
+    daily_closes=None,
+):
     price = closes[-1]
+    daily = daily_closes or [price * (1 + ((idx % 3) - 1) * 0.003) for idx in range(40)]
     return SymbolMarketData(
         symbol=symbol,
         okx_ticker=TickerSnapshot(
@@ -63,6 +72,7 @@ def _market(symbol, closes, volume=80_000_000, oi=30_000_000, funding=0.00005, o
         okx_candles_15m=_candles(symbol, closes),
         okx_candles_1h=_candles(symbol, closes[::2] or closes),
         okx_candles_4h=_candles(symbol, closes[::4] or closes),
+        okx_candles_1d=_candles(symbol, daily),
         okx_funding=FundingSnapshot(symbol=symbol, funding_rate=funding),
         okx_oi=OpenInterestSnapshot(symbol=symbol, oi_value=oi, oi_change_1h=1.0),
         okx_orderbook=OrderBookSnapshot(symbol=symbol, best_bid=price * 0.9998, best_ask=price * 1.0002),
@@ -75,6 +85,7 @@ def _market(symbol, closes, volume=80_000_000, oi=30_000_000, funding=0.00005, o
             low_24h=min(closes[-5:]),
         ),
         binance_candles_15m=_candles(symbol, closes),
+        binance_candles_1d=_candles(symbol, daily),
         binance_funding=FundingSnapshot(symbol=symbol, funding_rate=funding * 0.9),
         binance_oi=OpenInterestSnapshot(symbol=symbol, oi_value=oi * 1.2, oi_change_1h=0.8),
     )
@@ -125,6 +136,60 @@ def test_scorer_penalizes_slow_downtrend_despite_range_crossings():
 
     assert "trend_risk" in downtrend_score.risk_tags
     assert choppy_score.final_score > downtrend_score.final_score
+
+
+def test_scorer_blocks_daily_downtrend_despite_short_term_chop():
+    scorer = GridScorer(ScoringConfig(min_volume_24h=10_000_000, min_oi_value=10_000_000, investment=500))
+    short_term_chop = [100, 103, 98, 102, 99, 103, 98, 102, 99, 103, 100, 102]
+    daily_downtrend = [
+        132,
+        130,
+        128,
+        129,
+        126,
+        124,
+        125,
+        122,
+        121,
+        119,
+        120,
+        117,
+        116,
+        114,
+        113,
+        112,
+        110,
+        109,
+        108,
+        107,
+        106,
+        105,
+        104,
+        103,
+        102,
+        101,
+        100,
+        99,
+        98,
+        97,
+        96,
+        95,
+        94,
+        93,
+        92,
+        91,
+        90,
+        89,
+        88,
+        87,
+    ]
+
+    result = scorer.score(_market("SUIUSDT", short_term_chop, daily_closes=daily_downtrend))
+
+    assert result.hard_blocked
+    assert result.daily_trend.verdict == "reject"
+    assert "daily_downtrend_reject" in result.risk_tags
+    assert result.final_score <= 39
 
 
 def test_scorer_uses_optimized_backtest_parameters():

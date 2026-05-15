@@ -50,7 +50,9 @@ def test_format_telegram_message_contains_mobile_action_fields():
     assert "60" in message
     assert "500 USDT" in message
     assert "NOFX Preflight" in message
+    assert "Daily Trend" in message
     assert "PASS" in message
+    assert "Range Width" in message
     assert "Explicit Bounds" in message
     assert "output/strategies/demo.json" in message
 

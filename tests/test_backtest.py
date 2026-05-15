@@ -78,6 +78,38 @@ def test_optimize_grid_returns_best_grid_parameters():
     assert result.score > 0
 
 
+def test_optimize_grid_skips_ranges_above_max_range_pct():
+    candles = _candles([100, 102, 98, 103, 97, 102, 99, 101, 98, 103, 100, 102])
+
+    result = optimize_grid(
+        candles,
+        investment=500,
+        bound_atr=3.0,
+        max_range_pct=12.0,
+        grid_counts=(6,),
+        atr_multipliers=(2.0, 3.0),
+    )
+
+    assert result.atr_multiplier == 2.0
+    assert (result.upper_price - result.lower_price) / candles[-1].close * 100 <= 12.0
+
+
+def test_optimize_grid_marks_all_candidates_too_wide():
+    candles = _candles([100, 102, 98, 103, 97, 102, 99, 101, 98, 103, 100, 102])
+
+    result = optimize_grid(
+        candles,
+        investment=500,
+        bound_atr=6.5,
+        max_range_pct=12.0,
+        grid_counts=(6,),
+        atr_multipliers=(2.0,),
+    )
+
+    assert result.score == 0
+    assert "grid_range_too_wide" in result.tags
+
+
 def test_grid_backtest_counts_intrabar_crossings_from_high_low_path():
     candles = [
         Candle(open_time=0, open=100, high=100.5, low=99.5, close=100, volume=1000, quote_volume=100_000),

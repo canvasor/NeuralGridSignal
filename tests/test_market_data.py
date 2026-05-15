@@ -75,9 +75,13 @@ def test_market_data_provider_records_candidate_stats():
 
     assert [row.symbol for row in rows] == ["SOLUSDT", "DOGEUSDT"]
     assert rows[0].okx_candles_5m
+    assert rows[0].okx_candles_1d
     assert rows[0].binance_candles_5m
+    assert rows[0].binance_candles_1d
     assert ("SOLUSDT", "5m", 50) in provider.okx.kline_calls
+    assert ("SOLUSDT", "1d", 60) in provider.okx.kline_calls
     assert ("SOLUSDT", "5m", 50) in provider.binance.kline_calls
+    assert ("SOLUSDT", "1d", 60) in provider.binance.kline_calls
     assert provider.last_stats.total_symbols == 3
     assert provider.last_stats.liquidity_pass_count == 2
     assert provider.last_stats.scoring_pool_count == 2

@@ -41,6 +41,7 @@ def format_telegram_message(
     risks = ", ".join(score.risk_tags) if score.risk_tags else "none"
     reasons = "；".join(score.reasons[:3]) if score.reasons else "无"
     preflight = score.nofx_preflight
+    daily = score.daily_trend
     bounds_mode = "ATR Auto Bounds" if grid.get("use_atr_bounds") else "Explicit Bounds"
     scan_lines = []
     if stats is not None:
@@ -78,6 +79,14 @@ def format_telegram_message(
             f"• Daily Loss Limit: {grid['daily_loss_limit_pct']}%",
             f"• Bounds Mode: {bounds_mode}",
             f"• Range: {score.grid_lower_price:.8g} - {score.grid_upper_price:.8g}",
+            f"• Range Width: {preflight.grid_range_pct:.2f}%",
+            "",
+            "📅 Daily Trend",
+            f"• Verdict: {daily.verdict.upper()}",
+            f"• 7d / 14d / 30d: {daily.change_7d:.2f}% / {daily.change_14d:.2f}% / {daily.change_30d:.2f}%",
+            f"• EMA20 Slope: {daily.ema20_slope_pct:.2f}%",
+            f"• Close vs EMA20: {daily.close_vs_ema20_pct:.2f}%",
+            f"• 30d Position: {daily.range_position_30d:.2f}",
             "",
             "🧩 NOFX Preflight",
             f"• Verdict: {preflight.verdict.upper()}",
@@ -112,6 +121,7 @@ def format_no_signal_message(
     stats: CandidateStats | None = None,
 ) -> str:
     preflight = score.nofx_preflight
+    daily = score.daily_trend
     scan_lines = []
     if stats is not None:
         scan_lines = [
@@ -133,10 +143,13 @@ def format_no_signal_message(
             f"• Score: {score.final_score:.1f}",
             f"• Direction: {score.direction}",
             f"• NOFX Verdict: {preflight.verdict.upper()}",
+            f"• Daily Verdict: {daily.verdict.upper()}",
+            f"• 7d / 14d: {daily.change_7d:.2f}% / {daily.change_14d:.2f}%",
             f"• Source: {preflight.source}",
             f"• 5m BOLL Width: {preflight.bollinger_width_5m:.2f}%",
             f"• 4h Change: {preflight.price_change_4h:.2f}%",
             f"• BOLL Position: {preflight.bollinger_position_label}",
+            f"• Grid Range Width: {preflight.grid_range_pct:.2f}%",
             f"• Display Spacing OK: {preflight.display_spacing_ok}",
             "",
             "🛡 Reason",

@@ -4,6 +4,8 @@
 
 系统不是预测哪个币一定上涨，而是寻找未来 1-2 天更适合低风险网格的 OKX 合约币种。最优目标是：有足够波动、有足够成交和 OI、价格在区间中部附近、单边趋势风险不高、最近 2 天网格触发质量好。
 
+从 SUI 实盘事故复盘后，系统额外把“日线趋势”和“网格范围宽度”作为一等风控：短周期震荡不能覆盖日线下跌延续风险，历史 hits 也不能靠放大网格范围来换高分。
+
 ## 候选池
 
 默认从 OKX USDT 永续合约中先按 `GRID_SIGNAL_MIN_CONTRACT_VOLUME_24H` 过滤 24h 合约成交额，再从通过流动性过滤的币种中按成交额排序，取前 `GRID_SIGNAL_CANDIDATE_LIMIT` 个进入详细行情拉取和评分。
@@ -34,6 +36,10 @@ Binance 数据只做辅助，但在 nofx 兼容阶段有一项额外职责：
 - `extreme_funding`：资金费率绝对值高于 0.08%。
 - `large_24h_move`：24h 涨跌幅绝对值高于 18%。
 - `trend_risk`：2 天区间效率过高、EMA 斜率过大、2 天涨跌幅过大，或出现缓慢单边上行/下行。
+- `daily_downtrend_reject`：日线 7d/14d 跌幅、EMA20 下行、价格低于日线 EMA 或贴近 30d 低位，提示下跌延续，不生成策略。
+- `daily_downtrend_caution`：日线偏弱但未达到硬拒绝，显著降权。
+- `grid_range_too_wide`：没有任何回测参数能在最大网格范围内通过，硬拒绝。
+- `wide_grid_range` / `moderately_wide_grid_range`：网格范围偏宽，降低评分；范围越宽，历史 hits 越容易失真，单边浮亏风险越高。
 - `near_range_edge`：当前价格贴近 2 天区间边界。
 - `oi_spike`：短期 OI 异常扩张。
 
@@ -45,6 +51,8 @@ Binance 数据只做辅助，但在 nofx 兼容阶段有一项额外职责：
 - `volatility`：ATR% 是否位于适合网格的甜区。
 - `range`：区间效率、价格是否靠近区间中部、布林带宽度是否适中。
 - `backtest`：最近 2 天轻量网格模拟表现。
+- `daily_trend`：日线 7d/14d/30d 涨跌、EMA20 斜率、价格相对 EMA 的位置。
+- `grid_range`：最终网格上下沿占当前价格的宽度。理想值大致在 3%-8%，超过 8% 开始扣分，超过 15% 硬拒绝。
 - `funding`：资金费率是否温和。
 - `binance`：Binance 与 OKX 是否确认同一市场结构。
 - `risk`：风险标签扣分后的保守分。
@@ -73,6 +81,7 @@ abs(last_close - first_close) / sum(abs(close[i] - close[i-1]))
 - 使用 nofx 的 ATR 边界公式估算回测范围：当前价 ± `4h ATR14 * atr_multiplier`。
 - 单根 K 线按 intrabar 路径估算网格触发，而不是只看收盘价穿越。
 - 在多个 `grid_count` 与 `atr_multiplier` 组合中搜索综合分最高的参数。
+- 搜索时会跳过超过硬上限的网格范围；评分时会偏好更窄的有效范围，避免宽区间把历史 hits 放大。
 - 搜索时会过滤单格间距低于 `0.005` 的组合，避免 nofx Prompt 以两位小数显示成 `$0.00`。
 - 统计 K 线收盘价穿越网格层次数。
 - 穿越越多，说明网格触发潜力越高。

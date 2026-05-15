@@ -135,17 +135,27 @@ def optimize_grid(
     investment: float,
     bound_atr: float | None = None,
     min_spacing: float = 0.0,
+    max_range_pct: float = 0.0,
     grid_counts: tuple[int, ...] = (6, 7, 8, 9, 10, 11, 12),
     atr_multipliers: tuple[float, ...] = (2.0, 2.2, 2.4, 2.6, 2.8, 3.0),
 ) -> BacktestResult:
     best = BacktestResult(score=0.0, tags=["no_grid_candidate"])
+    skipped_too_wide = 0
+    current_price = candles[-1].close if candles else 0.0
     for grid_count in grid_counts:
         for multiplier in atr_multipliers:
             result = simulate_grid(candles, grid_count, multiplier, investment, bound_atr=bound_atr)
+            if max_range_pct > 0 and current_price > 0 and result.upper_price > result.lower_price:
+                range_pct = (result.upper_price - result.lower_price) / current_price * 100
+                if range_pct > max_range_pct:
+                    skipped_too_wide += 1
+                    continue
             if min_spacing > 0 and result.grid_count > 1:
                 spacing = (result.upper_price - result.lower_price) / (result.grid_count - 1)
                 if spacing < min_spacing:
                     continue
             if result.score > best.score:
                 best = result
+    if best.score == 0 and skipped_too_wide:
+        return BacktestResult(score=0.0, tags=["no_grid_candidate", "grid_range_too_wide"])
     return best
