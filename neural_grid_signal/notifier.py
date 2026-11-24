@@ -153,7 +153,7 @@ def format_no_signal_message(
             f"• Display Spacing OK: {preflight.display_spacing_ok}",
             "",
             "🛡 Reason",
-            f"• {'；'.join(score.reasons[:3]) if score.reasons else '没有候选通过 NOFX 预检'}",
+            f"• {'；'.join(score.reasons[:3]) if score.reasons else '没有候选同时通过预检与发布质量门槛'}",
             "",
             "📁 Files",
             f"• Report: {report_path}",

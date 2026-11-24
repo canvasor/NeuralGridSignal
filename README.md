@@ -85,3 +85,17 @@ python3 -m compileall neural_grid_signal
 - `docs/SELECTION_LOGIC.md`：选币和参数生成逻辑
 - `docs/OPERATIONS.md`：生产运行和定时任务
 - `docs/NOFX_GRID_EXPERIENCE.md`：nofx 网格策略兼容经验
+
+## 2026-11-24 信号质量修复
+
+发布除预检pass外，要求总分至少55（GRID_SIGNAL_MIN_SCORE）、方向非wait、无trend_risk、日线已知，
+并有Binance 5m执行数据，历史模型计费后净权益为正。Binance优先确定15m评分/导出区间和日线，OKX继续作为流动性候选池；
+两市场ticker价差超过1%硬拒绝，执行价在网格外也拒绝。
+K线排除未收盘数据；每次最多同时构建2个币种（GRID_SIGNAL_MAX_SYMBOL_CONCURRENCY，最多4）。
+轻量评分网格改用历史前段固定区间，不用末价回看；有限库存、双边费用、真实亏损和期末浮盈亏计入，
+额外字段evaluation_lower_price/evaluation_upper_price/net_equity_return_pct保留审计口径。
+这仍是参数筛选的简化回放，不含完整资金费/盘口/强平或独立样本验证，不是Paper收益等价物。
+JSON原子发布；快照selection_policy/candidate_diagnostics解释拒绝原因。单次任务异常不退出调度器。
+55分是新评分下初始质量门槛，需要后续采样，不能用旧分数直接比较新算法收益。
+维护时GRID_SIGNAL_QUIET_LIFECYCLE=1仅关闭启停提示，不影响原有定时信号通知。
+详细设计、测试与部署证据在/data/nofx/NofxStrategyFactory/docs/neural-grid-signal-optimization-2026-11-24.md。

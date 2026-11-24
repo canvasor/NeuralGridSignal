@@ -73,6 +73,8 @@ class Settings:
     min_contract_volume_24h: float = 10_000_000
     min_oi_value: float = 10_000_000
     grid_investment_usdt: float = 500
+    min_signal_score: float = 55.0
+    max_symbol_concurrency: int = 2
     dry_run: bool = False
 
     @property
@@ -105,5 +107,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         min_contract_volume_24h=_float(source, "GRID_SIGNAL_MIN_CONTRACT_VOLUME_24H", 10_000_000),
         min_oi_value=_float(source, "GRID_SIGNAL_MIN_OI_VALUE", 10_000_000),
         grid_investment_usdt=_float(source, "GRID_SIGNAL_INVESTMENT_USDT", 500),
+        min_signal_score=_float(source, 'GRID_SIGNAL_MIN_SCORE', 55.0),
+        max_symbol_concurrency=_int(source, 'GRID_SIGNAL_MAX_SYMBOL_CONCURRENCY', 2),
         dry_run=source.get("GRID_SIGNAL_DRY_RUN", "").lower() in {"1", "true", "yes", "on"},
     )

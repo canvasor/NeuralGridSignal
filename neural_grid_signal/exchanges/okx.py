@@ -75,8 +75,10 @@ class OKXClient:
         )
         rows: list[Candle] = []
         data = payload.get("data", []) if isinstance(payload, dict) else []
-        for row in reversed(data[-limit:]):
+        for row in reversed(data):
             try:
+                if len(row) > 8 and str(row[8]) != '1':
+                    continue
                 rows.append(
                     Candle(
                         open_time=int(row[0]),
@@ -91,7 +93,7 @@ class OKXClient:
                 )
             except Exception:
                 continue
-        return rows
+        return rows[-limit:]
 
     async def get_funding_rate(self, symbol: str) -> FundingSnapshot | None:
         payload = await self._get("/api/v5/public/funding-rate", {"instId": self.to_swap_inst_id(symbol)})

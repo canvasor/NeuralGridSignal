@@ -52,6 +52,8 @@ async def run_forever(
     now_fn = now_fn or (lambda: datetime.now(tz))
     job_lock = asyncio.Lock()
     while True:
+        if stop_event is not None and stop_event.is_set():
+            return
         run_at = next_run_after(now_fn(), schedule_times, tz)
         sleep_seconds = max(0.0, (run_at - now_fn().astimezone(tz)).total_seconds())
         logger.info("scheduler waiting next_run_at=%s sleep_seconds=%.0f", run_at.isoformat(), sleep_seconds)
@@ -65,6 +67,10 @@ async def run_forever(
         else:
             await asyncio.sleep(sleep_seconds)
         logger.info("scheduler job started run_at=%s", run_at.isoformat())
-        ran = await run_job_once(job, lock=job_lock, run_at=run_at)
+        try:
+            ran = await run_job_once(job, lock=job_lock, run_at=run_at)
+        except Exception as error:
+            logger.error('scheduler job failed error_type=%s; next scheduled run will continue', type(error).__name__)
+            continue
         if ran:
             logger.info("scheduler job finished run_at=%s", run_at.isoformat())

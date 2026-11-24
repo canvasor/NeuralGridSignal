@@ -80,6 +80,9 @@ class SymbolMarketData:
 
 @dataclass
 class BacktestResult:
+    evaluation_lower_price: float = 0.0
+    evaluation_upper_price: float = 0.0
+    net_equity_return_pct: float = 0.0
     score: float = 0.0
     grid_hits: int = 0
     realized_profit_proxy: float = 0.0

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -61,6 +62,8 @@ class BinanceFuturesClient:
             return output
         for row in data:
             try:
+                if int(row[6]) >= time.time() * 1000:
+                    continue
                 output.append(
                     Candle(
                         open_time=int(row[0]),
@@ -75,6 +78,9 @@ class BinanceFuturesClient:
                 )
             except Exception:
                 continue
+        period_ms = int(interval[:-1]) * {'m': 60000, 'h': 3600000, 'd': 86400000}.get(interval[-1], 60000)
+        if output and time.time() * 1000 - output[-1].close_time > period_ms * 2:
+            return []
         return output
 
     async def get_all_funding_rates(self) -> dict[str, FundingSnapshot]:

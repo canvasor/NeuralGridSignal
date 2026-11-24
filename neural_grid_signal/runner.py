@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import math
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,6 +26,8 @@ class GridSignalRunner:
         notifier: object | None = None,
     ):
         self.settings = settings or load_settings()
+        if not math.isfinite(self.settings.min_signal_score) or not 0 <= self.settings.min_signal_score <= 100:
+            raise ValueError('invalid minimum signal score')
         self.market_data_provider = market_data_provider or CombinedMarketDataProvider(self.settings)
         self.notifier = notifier or TelegramNotifier(
             bot_token=self.settings.telegram_bot_token,
@@ -42,7 +47,7 @@ class GridSignalRunner:
         if not rows:
             raise RuntimeError("no market data candidates fetched")
         scores = self.scorer.rank(rows)
-        pass_candidates = [score for score in scores if not score.hard_blocked and score.nofx_preflight.verdict == "pass"]
+        pass_candidates = [score for score in scores if not self.selection_rejections(score)]
         stats = self._candidate_stats()
         stats.scoring_pool_count = len(rows)
         stats.hard_filter_pass_count = len(pass_candidates)
@@ -63,6 +68,35 @@ class GridSignalRunner:
             all_scores=scores,
             candidate_stats=stats,
         )
+
+    def selection_rejections(self, score):
+        reasons = []
+        if score.hard_blocked:
+            reasons.append('hard_filters')
+        if score.nofx_preflight.verdict != 'pass':
+            reasons.append('preflight_not_pass')
+        if not math.isfinite(score.final_score) or score.final_score < self.settings.min_signal_score:
+            reasons.append('score_below_minimum')
+        if score.backtest.net_equity_return_pct <= 0:
+            reasons.append('historical_net_nonpositive')
+        if score.direction == 'wait':
+            reasons.append('direction_wait')
+        if score.nofx_preflight.source != 'binance_5m':
+            reasons.append('execution_data_missing')
+        if score.daily_trend.verdict == 'unknown':
+            reasons.append('daily_trend_missing')
+        if 'trend_risk' in score.risk_tags:
+            reasons.append('trend_risk')
+        return reasons
+
+    @staticmethod
+    def atomic_write(path, text):
+        temporary = path.with_suffix(path.suffix + '.tmp')
+        with temporary.open('w', encoding='utf-8') as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(path)
 
     def _candidate_stats(self) -> CandidateStats:
         stats = getattr(self.market_data_provider, "last_stats", None)
@@ -89,12 +123,15 @@ class GridSignalRunner:
         report_path = report_dir / f"{stamp}_{symbol}_grid_signal.md"
         snapshot_path = run_dir / f"{stamp}_{symbol}_run_snapshot.json"
         if strategy_path is not None and strategy is not None:
-            strategy_path.write_text(json.dumps(strategy.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-        report_path.write_text(self._render_report(strategy, selected, scores, stats, outcome), encoding="utf-8")
-        snapshot_path.write_text(
-            json.dumps(self._render_snapshot(strategy, selected, scores, stats, outcome), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+            self.atomic_write(strategy_path, json.dumps(strategy.to_dict(), ensure_ascii=False, indent=2))
+        report = self._render_report(strategy, selected, scores, stats, outcome)
+        report += '\n## Publication Quality\n\n' + f'- minimum_score: {self.settings.min_signal_score}\n- selected_rejections: {self.selection_rejections(selected)}\n- historical_net_equity_pct: {selected.backtest.net_equity_return_pct}\n'
+        report_path.write_text(report, encoding='utf-8')
+        snapshot = self._render_snapshot(strategy, selected, scores, stats, outcome)
+        snapshot['selection_policy'] = {'version': 2, 'minimum_score': self.settings.min_signal_score, 'execution_venue': 'binance', 'rejections': dict(Counter(reason for score in scores for reason in self.selection_rejections(score)))}
+        snapshot['candidate_diagnostics'] = [{'symbol': score.symbol, 'rejections': self.selection_rejections(score)} for score in scores]
+        snapshot['selected']['backtest'].update(net_equity_return_pct=selected.backtest.net_equity_return_pct, evaluation_lower_price=selected.backtest.evaluation_lower_price, evaluation_upper_price=selected.backtest.evaluation_upper_price)
+        self.atomic_write(snapshot_path, json.dumps(snapshot, ensure_ascii=False, indent=2))
         logger.info("wrote strategy=%s report=%s snapshot=%s", strategy_path, report_path, snapshot_path)
         return strategy_path, report_path, snapshot_path
 

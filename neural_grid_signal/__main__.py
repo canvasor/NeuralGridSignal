@@ -103,6 +103,8 @@ async def _send_scheduler_event(
     next_run_at: datetime | None = None,
     reason: str = "",
 ) -> NotificationResult | None:
+    if os.environ.get('GRID_SIGNAL_QUIET_LIFECYCLE') == '1':
+        return None
     send_scheduler_event = getattr(notifier, "send_scheduler_event", None)
     if not callable(send_scheduler_event):
         return None

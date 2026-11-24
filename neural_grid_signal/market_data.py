@@ -48,8 +48,12 @@ class CombinedMarketDataProvider:
             return_exceptions=False,
         )
 
+        semaphore = asyncio.Semaphore(max(1, min(4, self.settings.max_symbol_concurrency)))
+        async def bounded(item):
+            async with semaphore:
+                return await self._build_symbol_row(item, binance_tickers, binance_funding)
         rows = await asyncio.gather(
-            *[self._build_symbol_row(item, binance_tickers, binance_funding) for item in ranked],
+            *[bounded(item) for item in ranked],
             return_exceptions=True,
         )
         output: list[SymbolMarketData] = []

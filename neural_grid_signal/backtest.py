@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from neural_grid_signal.indicators import atr, atr_percent, max_drawdown_percent
+from neural_grid_signal.indicators import atr, atr_percent
 from neural_grid_signal.models import BacktestResult, Candle
 
 
@@ -36,15 +36,7 @@ def _crossed_levels(levels: list[float], start: float, end: float) -> list[float
 
 
 def _path_points(candle: Candle) -> tuple[float, ...]:
-    if candle.close > candle.open:
-        return (candle.open, candle.low, candle.high, candle.close)
-    if candle.close < candle.open:
-        return (candle.open, candle.high, candle.low, candle.close)
-    upper_wick = candle.high - candle.open
-    lower_wick = candle.open - candle.low
-    if lower_wick > upper_wick:
-        return (candle.open, candle.low, candle.high, candle.close)
-    return (candle.open, candle.high, candle.low, candle.close)
+    return (candle.open, candle.low, candle.high, candle.close)
 
 
 def simulate_grid(
@@ -58,8 +50,11 @@ def simulate_grid(
     if len(candles) < max(6, grid_count):
         return BacktestResult(score=0.0, tags=["insufficient_data"])
 
-    levels = _levels(candles, grid_count, atr_multiplier, bound_atr)
-    if not levels:
+    # Evaluation bounds use only a prefix; current 4h ATR is for deployment, not historical fills.
+    warmup = min(14, max(1, len(candles) // 4))
+    levels = _levels(candles[:warmup], grid_count, atr_multiplier)
+    proposal = _levels(candles, grid_count, atr_multiplier, bound_atr)
+    if not levels or not proposal:
         return BacktestResult(score=0.0, tags=["invalid_range"])
 
     spacing = (levels[-1] - levels[0]) / max(1, grid_count - 1)
@@ -67,37 +62,44 @@ def simulate_grid(
     if center <= 0 or spacing <= 0:
         return BacktestResult(score=0.0, tags=["invalid_range"])
 
-    inventory = 0
+    lots = []
     max_inventory = 0
     grid_hits = 0
-    realized_profit = 0.0
-    unit_notional = investment / grid_count
-    fee_cost = fee_bps / 10_000 * unit_notional
+    cash = investment
+    unit_quantity = investment / grid_count / center
+    peak = investment
+    drawdown = 0.0
 
-    for candle in candles[1:]:
+    def equity(mark):
+        return cash + sum(side * unit_quantity * (mark - price) for _, side, price in lots)
+
+    for candle in candles[warmup:]:
         path = _path_points(candle)
         for start, end in zip(path, path[1:]):
-            crossed = _crossed_levels(levels, start, end)
-            for _level in crossed:
-                grid_hits += 1
-                previous_inventory = inventory
-                if end > start:
-                    inventory -= 1
+            for price in _crossed_levels(levels, start, end):
+                side = -1 if end > start else 1
+                if lots and lots[0][1] != side:
+                    _, previous_side, entry = lots.pop(0)
+                    cash += previous_side * unit_quantity * (price - entry)
+                elif any(index == price for index, _, _ in lots) or len(lots) >= grid_count:
+                    continue
                 else:
-                    inventory += 1
-                if previous_inventory and (
-                    previous_inventory > 0 > inventory
-                    or previous_inventory < 0 < inventory
-                    or abs(inventory) < abs(previous_inventory)
-                ):
-                    realized_profit += max(0.0, spacing / center * unit_notional - fee_cost * 2)
-                max_inventory = max(max_inventory, abs(inventory))
-
+                    lots.append((price, side, price))
+                cash -= fee_bps / 10000 * unit_quantity * price
+                grid_hits += 1
+                max_inventory = max(max_inventory, len(lots))
+                value = equity(price)
+                peak = max(peak, value)
+                drawdown = max(drawdown, (peak - value) / peak * 100)
+            value = equity(end)
+            peak = max(peak, value)
+            drawdown = max(drawdown, (peak - value) / peak * 100)
+    realized_profit = cash - investment
+    net_profit = equity(candles[-1].close) - investment - len(lots) * unit_quantity * candles[-1].close * fee_bps / 10000
     hit_score = min(40.0, grid_hits * 3.0)
-    profit_score = min(20.0, realized_profit / max(1.0, investment) * 500.0)
+    profit_score = max(-40.0, min(20.0, net_profit / max(1.0, investment) * 500.0))
     skew = max_inventory / max(1, grid_count)
     skew_penalty = min(30.0, skew * 35.0)
-    drawdown = max_drawdown_percent(candles)
     drawdown_penalty = min(20.0, drawdown * 1.2)
     atr_pct = atr_percent(candles)
     atr_penalty = 0.0
@@ -119,13 +121,16 @@ def simulate_grid(
         score=round(score, 2),
         grid_hits=grid_hits,
         realized_profit_proxy=round(realized_profit, 4),
-        inventory_skew_abs=round(abs(inventory) / max(1, grid_count), 4),
+        inventory_skew_abs=round(len(lots) / max(1, grid_count), 4),
         max_drawdown_pct=drawdown,
         tags=tags,
         grid_count=grid_count,
         atr_multiplier=atr_multiplier,
-        lower_price=round(levels[0], 8),
-        upper_price=round(levels[-1], 8),
+        lower_price=round(proposal[0], 8),
+        upper_price=round(proposal[-1], 8),
+        evaluation_lower_price=levels[0],
+        evaluation_upper_price=levels[-1],
+        net_equity_return_pct=net_profit / investment * 100,
     )
 
 

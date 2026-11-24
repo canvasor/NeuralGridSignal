@@ -43,7 +43,7 @@ class GridScorer:
         self.config = config or ScoringConfig()
 
     def score(self, data: SymbolMarketData) -> GridScoreResult:
-        candles = data.okx_candles_15m
+        candles = data.binance_candles_15m or data.okx_candles_15m
         long_candles = data.okx_candles_1h or candles
         ticker = data.okx_ticker
         funding = data.okx_funding.funding_rate if data.okx_funding else 0.0
@@ -57,7 +57,7 @@ class GridScorer:
         rsi_value = rsi(candles)
         position = close_position_in_range(candles)
         two_day_change = pct_change(candles[0].close, candles[-1].close) if candles else 0.0
-        bound_atr = atr(data.okx_candles_4h or long_candles)
+        bound_atr = atr(data.okx_candles_4h or long_candles) * (candles[-1].close / data.okx_candles_15m[-1].close if candles and data.okx_candles_15m and data.okx_candles_15m[-1].close > 0 else 1)
         backtest = optimize_grid(
             candles,
             investment=self.config.investment,
@@ -73,6 +73,12 @@ class GridScorer:
         reasons: list[str] = []
         hard_blocked = False
 
+        if not data.binance_ticker or not data.binance_candles_15m:
+            risk_tags.append('execution_data_missing')
+            hard_blocked = True
+        if data.binance_ticker and ticker.price > 0 and abs(data.binance_ticker.price / ticker.price - 1) > .01:
+            risk_tags.append('execution_price_basis')
+            hard_blocked = True
         if ticker.volume_24h < self.config.min_volume_24h:
             risk_tags.append("low_volume")
             hard_blocked = True
@@ -123,7 +129,7 @@ class GridScorer:
         grid_range_score = self._grid_range_score(grid_range_pct)
         daily_score = self._daily_trend_score(daily_trend)
         funding_score = self._funding_score(funding)
-        binance_score = self._binance_confirmation_score(data, two_day_change, atr_pct)
+        binance_score = self._binance_confirmation_score(data, pct_change(data.okx_candles_15m[0].close, data.okx_candles_15m[-1].close), atr_percent(data.okx_candles_15m))
         risk_score = self._risk_score(risk_tags)
 
         final = (
@@ -303,8 +309,8 @@ class GridScorer:
         return clamp(100 - sum(penalties.get(tag, 0) for tag in set(tags)), 0, 100)
 
     def _daily_trend(self, data: SymbolMarketData) -> DailyTrend:
-        candles = data.okx_candles_1d or data.binance_candles_1d
-        source = "okx_1d" if data.okx_candles_1d else "binance_1d" if data.binance_candles_1d else "missing"
+        candles = data.binance_candles_1d or data.okx_candles_1d
+        source = "binance_1d" if data.binance_candles_1d else "okx_1d" if data.okx_candles_1d else "missing"
         if len(candles) < 8:
             return DailyTrend(source=source, verdict="unknown", risk_tags=["daily_trend_missing"])
 
@@ -430,7 +436,10 @@ class GridScorer:
         if not display_spacing_ok:
             risk_tags.append("nofx_spacing_rounds_to_zero")
 
-        reject = not display_spacing_ok or (
+        outside_bounds = not (backtest.lower_price < current_price < backtest.upper_price)
+        if outside_bounds:
+            risk_tags.append('execution_price_outside_grid')
+        reject = outside_bounds or not display_spacing_ok or (
             boll_width > 4.0
             and (abs(change_4h) > 5.0 or position_label != "middle" or "rsi_uptrend_risk" in risk_tags or "rsi_downtrend_risk" in risk_tags)
         )
